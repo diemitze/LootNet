@@ -13,8 +13,8 @@ using UnityEngine;
 
 namespace LootNet
 {
-    [BepInPlugin("com.user.lootnet", "LootNet", "2.0.0")]
-[BepInDependency("com.20fpsguy.QuickLootServer", BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInPlugin("com.20fpsguy.LootNet", "LootNet", "2.0.0")]
+    [BepInDependency("com.20fpsguy.QuickLootServer", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
         public static ManualLogSource LogSource;
@@ -25,7 +25,7 @@ namespace LootNet
 
         private static void PatchAllKillMethods()
         {
-            var harmony  = new Harmony("com.user.lootnet.kills");
+            var harmony  = new Harmony("com.20fpsguy.LootNet.kills");
             var postfix  = new HarmonyMethod(
                 typeof(KillTracker).GetMethod("Postfix",
                     BindingFlags.NonPublic | BindingFlags.Static));
