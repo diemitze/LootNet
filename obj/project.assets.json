@@ -13,9 +13,9 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "D:\\spt-scaffold\\ShowLootValue\\ShowLootValue.csproj",
+      "projectUniqueName": "D:\\spt-scaffold\\ShowLootValue\\LootNet.csproj",
       "projectName": "LootNet",
-      "projectPath": "D:\\spt-scaffold\\ShowLootValue\\ShowLootValue.csproj",
+      "projectPath": "D:\\spt-scaffold\\ShowLootValue\\LootNet.csproj",
       "packagesPath": "C:\\Users\\Timok\\.nuget\\packages\\",
       "outputPath": "D:\\spt-scaffold\\ShowLootValue\\obj\\",
       "projectStyle": "PackageReference",

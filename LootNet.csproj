@@ -106,7 +106,8 @@
   </ItemGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="copy &quot;$(TargetPath)&quot; &quot;D:\SPT dev\BepInEx\plugins\$(TargetFileName)&quot;" />
+    <MakeDir Directories="D:\SPT dev\BepInEx\plugins\LootNet" />
+    <Exec Command="copy &quot;$(TargetPath)&quot; &quot;D:\SPT dev\BepInEx\plugins\LootNet\$(TargetFileName)&quot;" />
   </Target>
 
   <Target Name="PackageModForDistribution" AfterTargets="Build">
@@ -114,12 +115,13 @@
       <ModName>$(AssemblyName)</ModName>
       <ZipFileName>$(ModName).zip</ZipFileName>
       <TempPackageDir>$(ProjectDir)obj\Package</TempPackageDir>
-      <ModPackageDir>$(TempPackageDir)\BepInEx\plugins</ModPackageDir>
+      <ModPackageDir>$(TempPackageDir)\BepInEx\plugins\LootNet</ModPackageDir>
     </PropertyGroup>
     <Message Text="--- Starting Mod packaging for distribution ---" Importance="high" />
     <RemoveDir Directories="$(TempPackageDir)" />
     <MakeDir Directories="$(ModPackageDir)" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModPackageDir)" />
+    <Copy SourceFiles="$(ProjectDir)Resources\weii weii.mp4" DestinationFolder="$(ModPackageDir)" Condition="Exists('$(ProjectDir)Resources\weii weii.mp4')" />
     <ZipDirectory SourceDirectory="$(TempPackageDir)" DestinationFile="$(ProjectDir)$(ZipFileName)" Overwrite="true" />
     <RemoveDir Directories="$(TempPackageDir)" />
     <Message Text="--- Mod successfully packaged at: $(ProjectDir)$(ZipFileName) ---" Importance="high" />

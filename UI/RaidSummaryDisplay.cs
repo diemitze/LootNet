@@ -125,7 +125,7 @@ namespace LootNet.UI
 
         public IEnumerator PrepareVideoEarly()
         {
-            string path = Path.Combine(BepInEx.Paths.PluginPath, VideoFileName);
+            string path = Path.Combine(BepInEx.Paths.PluginPath, "LootNet", VideoFileName);
             if (!File.Exists(path)) yield break;
             if (_videoPlayer.isPrepared || _videoPlayer.isPlaying) yield break;
             _videoPlayer.url = "file:///" + path.Replace("\\", "/");
@@ -647,7 +647,7 @@ namespace LootNet.UI
         {
             if (!Plugin.VideoEnabled.Value) yield break;
 
-            string path = Path.Combine(BepInEx.Paths.PluginPath, VideoFileName);
+            string path = Path.Combine(BepInEx.Paths.PluginPath, "LootNet", VideoFileName);
             if (!File.Exists(path))
             {
                 Plugin.LogSource.LogWarning($"[LootNet] Video not found: {path}");
