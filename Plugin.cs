@@ -59,7 +59,7 @@ namespace LootNet
             VideoEnabled = Config.Bind("Display", "Secret Summary Feature", false,
                 "You found it. Enable this and see what happens after your next raid.");
             UseHandbookPrices = Config.Bind("Prices", "Use Handbook Prices", false,
-                "Use handbook (base) prices instead of flea market prices. Useful if you have flea market removed or use trader/custom trader mods.");
+                "Use handbook (base) prices instead of flea market prices. Enable this if you use custom traders or have no flea market. Requires a game restart to take effect.");
 
             var priceObj = new GameObject("LootNetPriceService");
             DontDestroyOnLoad(priceObj);
