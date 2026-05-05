@@ -23,7 +23,7 @@ namespace LootNet.Patches
             _fired = true;
 
             var stats = RaidTracker.BuildPendingStats();
-            RaidTracker.ResetAfterRaid();   // clears _foundItems → DisplayValue becomes 0
+            RaidTracker.ResetAfterRaid();
             LootValueDisplay.Instance.DestroyClone();
 
             if (stats == null) { _fired = false; return; }

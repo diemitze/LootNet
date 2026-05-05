@@ -38,7 +38,6 @@ namespace LootNet.UI
         private const float RowHeight          = 52f;
         private const float SlideDistance      = 60f;
 
-        // ── UI references ──────────────────────────────────────────────────────────
         private CanvasGroup         _canvasGroup;
         private RawImage            _bgImage;
         private Image               _scanLine;
@@ -56,7 +55,6 @@ namespace LootNet.UI
         private Transform           _fireteamContainer;
         private Texture2D           _vignetteTexture;
 
-        // ── Video panel ────────────────────────────────────────────────────────────
         private GameObject          _videoPanel;
         private CanvasGroup         _videoCg;
         private RawImage            _videoImage;
@@ -82,7 +80,6 @@ namespace LootNet.UI
             public Image            AccentBar;
         }
 
-        // ─── Lifecycle ────────────────────────────────────────────────────────────
 
         private void Awake()
         {
@@ -106,7 +103,6 @@ namespace LootNet.UI
             if (_timer <= 0f) Hide();
         }
 
-        // ─── Public API ───────────────────────────────────────────────────────────
 
         public void QueueSummary(RaidStats stats)
         {
@@ -158,18 +154,15 @@ namespace LootNet.UI
             OnHidden = null;
         }
 
-        // ─── Animation ────────────────────────────────────────────────────────────
 
         private IEnumerator AnimateIn(RaidStats stats)
         {
-            // Reset
             ResetUI(stats);
             _canvasGroup.alpha = 0f;
             _root.SetActive(true);
             _visible = true;
             _timer   = AutoDismissSeconds;
 
-            // ── 1. Fade in backdrop ──────────────────────────────────────────────
             PlaySound("BackpackOpen");
             float t = 0f;
             while (t < FadeInDuration)
@@ -180,7 +173,6 @@ namespace LootNet.UI
             }
             _canvasGroup.alpha = 1f;
 
-            // ── 2. Panel slides up from slightly below ───────────────────────────
             if (_panel != null)
             {
                 var startPos = _panel.anchoredPosition + new Vector2(0f, -40f);
@@ -197,16 +189,14 @@ namespace LootNet.UI
                 _panel.anchoredPosition = startPos + new Vector2(0f, 40f);
             }
 
-            // ── 3. Title + subtitle slide & fade ────────────────────────────────
             PlaySound("AchievementCompleted");
             yield return StartCoroutine(SlideInText(_titleText, SlideDistance, 0.35f));
-            StartCoroutine(FlashTitle(_titleText)); // fire-and-forget gold flare
+            StartCoroutine(FlashTitle(_titleText));
             yield return new WaitForSeconds(0.05f);
             yield return StartCoroutine(SlideInText(_subtitleText, SlideDistance * 0.5f, 0.25f));
 
             yield return new WaitForSeconds(0.1f);
 
-            // ── 4. Count up total value ──────────────────────────────────────────
             Color valueColor = ValueColor(stats.TotalFoundValue);
             _valueText.color = new Color(valueColor.r, valueColor.g, valueColor.b, 0f);
             yield return StartCoroutine(FadeText(_valueText, new Color(valueColor.r, valueColor.g, valueColor.b), 0.2f));
@@ -235,14 +225,11 @@ namespace LootNet.UI
             _valueText.text = $"₽ {stats.TotalFoundValue:N0}";
             PlaySound("TradeOperationComplete");
 
-            // Pulse the value text when it lands
             StartCoroutine(PulseScale(_valueText.rectTransform, 1.08f, 0.25f));
             if (_valuePulseRing != null) StartCoroutine(PulseRing(_valuePulseRing, 0.5f));
 
-            // Start video fade-in NOW (in parallel with remaining animations)
             StartCoroutine(PlayVideoSequence());
 
-            // Reveal remaining rows
             while (nextItem < stats.TopItems.Count)
             {
                 RevealRow(nextItem, stats.TopItems[nextItem].Value);
@@ -250,12 +237,10 @@ namespace LootNet.UI
                 yield return new WaitForSeconds(StaggerDelay);
             }
 
-            // ── 5. Stats line + follower footnote (fade in together) ────────────
             yield return new WaitForSeconds(0.15f);
             PlaySound("QuestSubTrackComplete");
             yield return StartCoroutine(SlideInText(_statsText, 20f, 0.25f));
 
-            // ── 5b. Teammate rows slide in staggered (if present) ────────────────
             if (_fireteamSection != null && _fireteamSection.activeSelf)
             {
                 yield return new WaitForSeconds(0.1f);
@@ -267,12 +252,10 @@ namespace LootNet.UI
                 }
             }
 
-            // ── 6. Progress bar + dismiss hint ───────────────────────────────────
             yield return new WaitForSeconds(0.3f);
             PlaySound("MenuEscape");
             yield return StartCoroutine(FadeText(_dismissText, new Color(0.4f, 0.4f, 0.4f), 0.3f));
 
-            // Start scan-line animation
             _scanLineCoroutine = StartCoroutine(AnimateScanLine());
         }
 
@@ -322,14 +305,13 @@ namespace LootNet.UI
             if (_panel != null)
             {
                 _panel.anchoredPosition = Vector2.zero;
-                // Grow panel when teammates are present
                 bool hasTeam = stats.FireteamMembers != null && stats.FireteamMembers.Count > 0;
                 int  teamCount = hasTeam ? Mathf.Min(stats.FireteamMembers.Count, 4) : 0;
                 float extraH = hasTeam ? 28f + RowHeight * teamCount + 16f : 0f;
                 _panel.sizeDelta = new Vector2(780f, 800f + extraH);
             }
 
-            // Reset video — pause + seek keeps isPrepared intact (Stop() destroys it)
+            // Pause + seek keeps isPrepared intact; Stop() would destroy it
             if (_videoPlayer != null)
             {
                 _videoPlayer.Pause();
@@ -402,7 +384,6 @@ namespace LootNet.UI
             var rowBg = row.AddComponent<Image>();
             rowBg.color = new Color(0.05f, 0.07f, 0.05f, index % 2 == 0 ? 0.6f : 0.3f);
 
-            // Left accent bar
             var accentGo = MakeRect("Accent", row.transform);
             var accentRt = accentGo.GetComponent<RectTransform>();
             accentRt.anchorMin = Vector2.zero; accentRt.anchorMax = new Vector2(0f, 1f);
@@ -410,7 +391,6 @@ namespace LootNet.UI
             accentRt.anchoredPosition = Vector2.zero; accentRt.sizeDelta = new Vector2(3f, 0f);
             var accentImg = accentGo.AddComponent<Image>();
 
-            // Kill-count badge
             const float badgeW = 36f;
             var badgeGo = MakeRect("KillBadge", row.transform);
             var badgeRt = badgeGo.GetComponent<RectTransform>();
@@ -424,7 +404,6 @@ namespace LootNet.UI
             badgeLabel.color = new Color(0.9f, 0.9f, 0.9f);
             Stretch(badgeLabel.rectTransform);
 
-            // Name + kill label
             var label = MakeTMP($"TeamLabel{index}", row.transform, 15f, FontStyles.Normal, TextAlignmentOptions.Left);
             label.color = new Color(0.85f, 0.85f, 0.85f);
             var lr = label.rectTransform;
@@ -467,7 +446,6 @@ namespace LootNet.UI
             else                       PlaySound("InsuranceItemOnInsure", "ButtonClick");
         }
 
-        // ─── Animation helpers ────────────────────────────────────────────────────
 
         private static IEnumerator SlideInRow(ItemRowData row, float dur)
         {
@@ -578,7 +556,6 @@ namespace LootNet.UI
             var rt = _scanLine.rectTransform;
             while (_visible)
             {
-                // sweep from top to bottom over 3s
                 float t = 0f;
                 const float sweep = 3f;
                 while (t < sweep && _visible)
@@ -606,11 +583,9 @@ namespace LootNet.UI
             catch { }
         }
 
-        // ─── Video ────────────────────────────────────────────────────────────────
 
         private void BuildVideoPanel()
         {
-            // VideoPlayer lives on a persistent child so it survives scene loads
             var vpGo = new GameObject("VideoPlayerHost");
             vpGo.transform.SetParent(transform, false);
             _videoPlayer = vpGo.AddComponent<VideoPlayer>();
@@ -620,22 +595,19 @@ namespace LootNet.UI
             _videoPlayer.renderMode      = VideoRenderMode.RenderTexture;
             _videoPlayer.SetDirectAudioVolume(0, 0.35f);
 
-            // Panel anchored to bottom-right of screen
             _videoPanel = MakeRect("VideoPanel", _root.transform);
             var rt = _videoPanel.GetComponent<RectTransform>();
             rt.anchorMin = new Vector2(1f, 0f);
             rt.anchorMax = new Vector2(1f, 0f);
             rt.pivot     = new Vector2(1f, 0f);
             rt.anchoredPosition = new Vector2(-24f, 24f);
-            rt.sizeDelta = new Vector2(VideoMaxWidth, VideoMaxWidth * 9f / 16f); // default 16:9
+            rt.sizeDelta = new Vector2(VideoMaxWidth, VideoMaxWidth * 9f / 16f);
 
             _videoCg = _videoPanel.AddComponent<CanvasGroup>();
             _videoCg.alpha = 0f;
 
-            // Dark border background
             _videoPanel.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.85f);
 
-            // RawImage inset 3px
             var imgGo = MakeRect("VideoImage", _videoPanel.transform);
             var imgRt = imgGo.GetComponent<RectTransform>();
             imgRt.anchorMin = Vector2.zero; imgRt.anchorMax = Vector2.one;
@@ -654,7 +626,6 @@ namespace LootNet.UI
                 yield break;
             }
 
-            // Prep started at game launch — should already be ready, but re-prepare if lost
             if (!_videoPlayer.isPrepared)
             {
                 _videoPlayer.url = "file:///" + path.Replace("\\", "/");
@@ -668,7 +639,6 @@ namespace LootNet.UI
                 if (!_videoPlayer.isPrepared) yield break;
             }
 
-            // Size panel to match actual video aspect ratio
             uint vw = _videoPlayer.width;
             uint vh = _videoPlayer.height;
             if (vw > 0 && vh > 0)
@@ -678,23 +648,20 @@ namespace LootNet.UI
                 rt.sizeDelta = new Vector2(VideoMaxWidth, h);
             }
 
-            // Create/recreate render texture at native resolution
             if (_videoRenderTexture != null) Destroy(_videoRenderTexture);
             _videoRenderTexture = new RenderTexture((int)_videoPlayer.width, (int)_videoPlayer.height, 0);
             _videoPlayer.targetTexture = _videoRenderTexture;
             _videoImage.texture = _videoRenderTexture;
 
-            // Fade in the panel then play
             yield return StartCoroutine(FadeInCanvasGroup(_videoCg, 0.6f));
 
             bool ended = false;
             _videoPlayer.loopPointReached += _ => ended = true;
             _videoPlayer.Play();
 
-            // Wait for playback to finish
             while (!ended) yield return null;
 
-            // Freeze on last frame — Pause keeps the render texture intact
+            // Pause keeps the render texture intact; Stop() would destroy it
             _videoPlayer.Pause();
         }
 
@@ -703,7 +670,6 @@ namespace LootNet.UI
             if (_videoRenderTexture != null) Destroy(_videoRenderTexture);
         }
 
-        // ─── UI Construction ──────────────────────────────────────────────────────
 
         private void BuildUI()
         {
@@ -717,17 +683,15 @@ namespace LootNet.UI
             _root = MakeRect("SummaryRoot", transform);
             Stretch(_root.GetComponent<RectTransform>());
 
-            // ── Screenshot + dark overlay ──────────────────────────────────────
             var screenshotGo = MakeRect("Screenshot", _root.transform);
             Stretch(screenshotGo.GetComponent<RectTransform>());
             _bgImage = screenshotGo.AddComponent<RawImage>();
-            _bgImage.color = new Color(1f, 1f, 1f, 0.35f); // dim the screenshot
+            _bgImage.color = new Color(1f, 1f, 1f, 0.35f);
 
             var overlay = MakeRect("Overlay", _root.transform);
             Stretch(overlay.GetComponent<RectTransform>());
             overlay.AddComponent<Image>().color = new Color(0.01f, 0.01f, 0.03f, 0.82f);
 
-            // Vignette — dark radial gradient at screen edges
             _vignetteTexture = BuildVignetteTexture();
             var vigGo = MakeRect("Vignette", _root.transform);
             Stretch(vigGo.GetComponent<RectTransform>());
@@ -735,7 +699,6 @@ namespace LootNet.UI
             vigImg.texture = _vignetteTexture;
             vigImg.color   = new Color(1f, 1f, 1f, 0.9f);
 
-            // Scan-line layer
             var scanGo = MakeRect("ScanLine", _root.transform);
             var scanRt = scanGo.GetComponent<RectTransform>();
             scanRt.anchorMin = new Vector2(0f, 1f); scanRt.anchorMax = new Vector2(1f, 1f);
@@ -743,7 +706,6 @@ namespace LootNet.UI
             _scanLine = scanGo.AddComponent<Image>();
             _scanLine.color = Color.clear;
 
-            // Click-to-dismiss (covers whole screen)
             var clickGo = MakeRect("ClickCatcher", _root.transform);
             Stretch(clickGo.GetComponent<RectTransform>());
             var clickImg = clickGo.AddComponent<Image>();
@@ -752,11 +714,9 @@ namespace LootNet.UI
             btn.transition = Selectable.Transition.None;
             btn.onClick.AddListener(Hide);
 
-            // ── Gold accent bars (top + bottom) ───────────────────────────────
             MakeAccentBar("TopAccent", _root.transform, new Vector2(0f, 1f), new Vector2(1f, 1f), 4f, new Color(1f, 0.84f, 0f, 1f));
             MakeAccentBar("BotAccent", _root.transform, new Vector2(0f, 0f), new Vector2(1f, 0f), 2f, new Color(1f, 0.84f, 0f, 0.35f));
 
-            // ── Main panel (centered card) ─────────────────────────────────────
             var panelGo = MakeRect("Panel", _root.transform);
             _panel = panelGo.GetComponent<RectTransform>();
             _panel.anchorMin = new Vector2(0.5f, 0.5f); _panel.anchorMax = new Vector2(0.5f, 0.5f);
@@ -764,11 +724,9 @@ namespace LootNet.UI
             _panel.anchoredPosition = Vector2.zero;
             _panel.sizeDelta = new Vector2(780f, 800f);
 
-            // Subtle panel background
             var panelBg = panelGo.AddComponent<Image>();
             panelBg.color = new Color(0.04f, 0.04f, 0.07f, 0.92f);
 
-            // Left gold edge stripe
             var stripe = MakeRect("LeftStripe", panelGo.transform);
             var stripeRt = stripe.GetComponent<RectTransform>();
             stripeRt.anchorMin = Vector2.zero; stripeRt.anchorMax = new Vector2(0f, 1f);
@@ -778,27 +736,22 @@ namespace LootNet.UI
 
             float y = -44f; // top padding
 
-            // ── Title ──────────────────────────────────────────────────────────
             _titleText = MakeTMP("Title", panelGo.transform, 56f, FontStyles.Bold, TextAlignmentOptions.Center);
             _titleText.color = new Color(1f, 0.84f, 0f, 0f);
             _titleText.characterSpacing = 10f;
             PlaceLabel(_titleText.rectTransform, y, 78f); y -= 90f;
 
-            // ── Subtitle ───────────────────────────────────────────────────────
             _subtitleText = MakeTMP("Subtitle", panelGo.transform, 14f, FontStyles.Normal, TextAlignmentOptions.Center);
             _subtitleText.color = new Color(0.55f, 0.55f, 0.55f, 0f);
             _subtitleText.characterSpacing = 5f;
             PlaceLabel(_subtitleText.rectTransform, y, 24f); y -= 42f;
 
-            // ── Divider ────────────────────────────────────────────────────────
             AddHRule(panelGo.transform, y, new Color(1f, 0.84f, 0f, 0.35f)); y -= 30f;
 
-            // ── Value text + pulse ring ─────────────────────────────────────────
             _valueText = MakeTMP("Value", panelGo.transform, 76f, FontStyles.Bold, TextAlignmentOptions.Center);
             _valueText.color = Color.clear;
             PlaceLabel(_valueText.rectTransform, y, 100f);
 
-            // Pulse ring behind value
             var ringGo = MakeRect("PulseRing", panelGo.transform);
             var ringRt = ringGo.GetComponent<RectTransform>();
             ringRt.anchorMin = new Vector2(0.5f, 1f); ringRt.anchorMax = new Vector2(0.5f, 1f);
@@ -811,22 +764,18 @@ namespace LootNet.UI
 
             y -= 118f;
 
-            // ── Stats line ─────────────────────────────────────────────────────
             _statsText = MakeTMP("Stats", panelGo.transform, 16f, FontStyles.Normal, TextAlignmentOptions.Center);
             _statsText.color = new Color(0.78f, 0.78f, 0.78f, 0f);
             PlaceLabel(_statsText.rectTransform, y, 28f); y -= 52f;
 
-            // ── Divider ────────────────────────────────────────────────────────
             AddHRule(panelGo.transform, y, new Color(0.25f, 0.25f, 0.25f, 0.5f)); y -= 26f;
 
-            // ── "TOP FINDS" header ─────────────────────────────────────────────
             var hdr = MakeTMP("TopFindsHeader", panelGo.transform, 11f, FontStyles.Bold, TextAlignmentOptions.Center);
             hdr.text = "TOP FINDS";
             hdr.color = new Color(0.35f, 0.35f, 0.35f, 1f);
             hdr.characterSpacing = 4f;
             PlaceLabel(hdr.rectTransform, y, 18f); y -= 32f;
 
-            // ── Item rows container ────────────────────────────────────────────
             var tcGo = MakeRect("TopItemsContainer", panelGo.transform);
             var tcRt = tcGo.GetComponent<RectTransform>();
             tcRt.anchorMin = new Vector2(0f, 1f); tcRt.anchorMax = new Vector2(1f, 1f);
@@ -840,7 +789,6 @@ namespace LootNet.UI
 
             y -= RowHeight * 5f + 10f;
 
-            // ── Teammate section (hidden when no PIT followers) ────────────────
             _fireteamSection = MakeRect("TeamSection", panelGo.transform);
             var fsSectionRt = _fireteamSection.GetComponent<RectTransform>();
             fsSectionRt.anchorMin = new Vector2(0f, 1f); fsSectionRt.anchorMax = new Vector2(1f, 1f);
@@ -870,7 +818,6 @@ namespace LootNet.UI
 
             _fireteamSection.SetActive(false);
 
-            // ── Progress bar (bottom of panel) ─────────────────────────────────
             var progTrack = MakeRect("ProgressTrack", panelGo.transform);
             var ptRt = progTrack.GetComponent<RectTransform>();
             ptRt.anchorMin = new Vector2(0f, 0f); ptRt.anchorMax = new Vector2(1f, 0f);
@@ -885,7 +832,6 @@ namespace LootNet.UI
             _progressBarFill.pivot = new Vector2(0f, 0.5f);
             progFillGo.AddComponent<Image>().color = new Color(1f, 0.84f, 0f, 0.65f);
 
-            // ── Dismiss text (bottom of screen) ───────────────────────────────
             _dismissText = MakeTMP("Dismiss", _root.transform, 12f, FontStyles.Normal, TextAlignmentOptions.Center);
             _dismissText.color = new Color(0.4f, 0.4f, 0.4f, 0f);
             var dr = _dismissText.rectTransform;
@@ -911,11 +857,9 @@ namespace LootNet.UI
             var cg = row.AddComponent<CanvasGroup>();
             cg.alpha = 0f;
 
-            // Subtle row background
             var rowBg = row.AddComponent<Image>();
             rowBg.color = new Color(0.06f, 0.06f, 0.09f, index % 2 == 0 ? 0.6f : 0.3f);
 
-            // Left accent color bar
             var accentGo = MakeRect("Accent", row.transform);
             var accentRt = accentGo.GetComponent<RectTransform>();
             accentRt.anchorMin = Vector2.zero; accentRt.anchorMax = new Vector2(0f, 1f);
@@ -924,7 +868,6 @@ namespace LootNet.UI
             var accentImg = accentGo.AddComponent<Image>();
             accentImg.color = Color.gray;
 
-            // Rank badge
             const float badgeW = 36f;
             var badgeGo = MakeRect("RankBadge", row.transform);
             var badgeRt = badgeGo.GetComponent<RectTransform>();
@@ -939,7 +882,6 @@ namespace LootNet.UI
             badgeLabel.color = new Color(0.05f, 0.05f, 0.05f);
             Stretch(badgeLabel.rectTransform);
 
-            // Item name + price label
             var label = MakeTMP($"Label{index}", row.transform, 15f, FontStyles.Normal, TextAlignmentOptions.Left);
             label.color = new Color(0.9f, 0.9f, 0.9f);
             var lr = label.rectTransform;
@@ -965,7 +907,6 @@ namespace LootNet.UI
                 BuildItemRow(_itemRows.Count);
         }
 
-        // ─── Helpers ─────────────────────────────────────────────────────────────
 
         private static void MakeAccentBar(string name, Transform parent, Vector2 anchorMin, Vector2 anchorMax, float h, Color color)
         {
@@ -1054,7 +995,7 @@ namespace LootNet.UI
                 float dy = (y / (s - 1f)) * 2f - 1f;
                 float d  = Mathf.Sqrt(dx * dx + dy * dy);
                 float a  = Mathf.Clamp01((d - 0.5f) / 0.65f);
-                a        = a * a; // quadratic — sharper falloff at edges
+                a        = a * a;
                 px[y * s + x] = new Color32(0, 0, 0, (byte)(a * 210f));
             }
             tex.SetPixels32(px);

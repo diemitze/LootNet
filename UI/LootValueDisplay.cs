@@ -3,10 +3,6 @@ using UnityEngine;
 
 namespace LootNet.UI
 {
-    /// <summary>
-    /// Clones EFT's own SlotViewHeader element so the display looks 100% native.
-    /// Identical approach to the original LootNet mod.
-    /// </summary>
     public class LootValueDisplay : MonoBehaviour
     {
         private static LootValueDisplay _instance;
@@ -24,9 +20,9 @@ namespace LootNet.UI
             }
         }
 
-        private GameObject       _original;     // the EFT SlotViewHeader we clone from
-        private GameObject       _clone;        // our cloned instance living in the inventory UI
-        private TextMeshProUGUI  _cloneLabel;   // cached TMP child ref to avoid Find() each refresh
+        private GameObject       _original;
+        private GameObject       _clone;
+        private TextMeshProUGUI  _cloneLabel;   // cached so RefreshText doesn't call Find() every frame
         private double           _currentValue;
 
         private void Awake()
@@ -34,8 +30,6 @@ namespace LootNet.UI
             if (_instance != null && _instance != this) { Destroy(gameObject); return; }
             _instance = this;
         }
-
-        // ── Called every time the inventory opens ─────────────────────────────────
 
         public void Show()
         {
@@ -73,17 +67,11 @@ namespace LootNet.UI
 
         public void TryCreateFromNativeUI() { }   // kept for compatibility
 
-        // ── Internal ──────────────────────────────────────────────────────────────
-
         private void EnsureClone()
         {
-            // Already have a live clone
             if (_clone != null) return;
-
-            // Only create the clone when actually in a raid
             if (!Comfort.Common.Singleton<EFT.GameWorld>.Instantiated) return;
 
-            // Find the native SlotViewHeader the first time (or if it was lost)
             if (_original == null)
             {
                 _original = GameObject.Find(
@@ -98,7 +86,6 @@ namespace LootNet.UI
                 return;
             }
 
-            // Clone it and place next to the original (same parent)
             _clone = Instantiate(_original, _original.transform.parent, false);
 
             var rt = _clone.GetComponent<RectTransform>();
@@ -112,7 +99,6 @@ namespace LootNet.UI
             var arrow = _clone.transform.Find("ArrowHolder");
             if (arrow != null) arrow.gameObject.SetActive(false);
 
-            // Cache the TMP child once so RefreshText doesn't Find() every call
             _cloneLabel = _clone.transform.Find("SlotName")?.GetComponent<TextMeshProUGUI>();
 
             RefreshText();

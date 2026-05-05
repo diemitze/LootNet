@@ -9,8 +9,6 @@ using System.Reflection;
 
 namespace LootNet.Patches
 {
-    // ── Item added ───────────────────────────────────────────────────────────────
-
     internal class InventoryPatch : ModulePatch
     {
         protected override MethodBase GetTargetMethod()
@@ -27,8 +25,6 @@ namespace LootNet.Patches
             LootValueDisplay.Instance.SetValue(RaidTracker.DisplayValue);
         }
     }
-
-    // ── Item removed ─────────────────────────────────────────────────────────────
 
     internal class InventoryRemovePatch : ModulePatch
     {
@@ -47,8 +43,6 @@ namespace LootNet.Patches
         }
     }
 
-    // ── Inventory opened ─────────────────────────────────────────────────────────
-
     internal class InventoryScreenShowPatch : ModulePatch
     {
         protected override MethodBase GetTargetMethod()
@@ -61,8 +55,6 @@ namespace LootNet.Patches
             LootValueDisplay.Instance.Show();
         }
     }
-
-    // ── Inventory closed ─────────────────────────────────────────────────────────
 
     internal class InventoryScreenClosePatch : ModulePatch
     {

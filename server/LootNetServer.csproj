@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <RootNamespace>LootNetServer</RootNamespace>
+    <Version>1.0.0</Version>
+    <Authors>user</Authors>
+    <Company>user</Company>
+    <Product>LootNetServer</Product>
+    <Description></Description>
+    <Copyright>Copyright © user</Copyright>
+    <RepositoryUrl></RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SPTarkov.Common" Version="4.0.13" />
+    <PackageReference Include="SPTarkov.DI" Version="4.0.13" />
+    <PackageReference Include="SPTarkov.Server.Core" Version="4.0.13" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <_ContentIncludedByDefault Remove="dist\package.json" />
+  </ItemGroup>
+
+  <Target Name="PackageModForDistribution" AfterTargets="Build">
+    <PropertyGroup>
+      <ModName>$(AssemblyName)</ModName>
+      <ZipFileName>$(ModName).zip</ZipFileName>
+      <TempPackageDir>$(ProjectDir)obj\Package</TempPackageDir>
+      <ModPackageDir>$(TempPackageDir)\SPT\user\mods\$(ModName)</ModPackageDir>
+    </PropertyGroup>
+    <Message Text="--- Starting Mod packaging for distribution ---" Importance="high" />
+    <RemoveDir Directories="$(TempPackageDir)" />
+    <MakeDir Directories="$(ModPackageDir)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModPackageDir)" />
+    <ZipDirectory SourceDirectory="$(TempPackageDir)" DestinationFile="$(ProjectDir)$(ZipFileName)" Overwrite="true" />
+    <RemoveDir Directories="$(TempPackageDir)" />
+    <Message Text="--- Mod successfully packaged at: $(ProjectDir)$(ZipFileName) ---" Importance="high" />
+  </Target>
+</Project>

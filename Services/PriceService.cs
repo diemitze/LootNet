@@ -23,7 +23,13 @@ namespace LootNet.Services
 
         private async Task FetchPricesAsync()
         {
-            // Try server mod flea prices first, fall back to handbook
+            if (Plugin.UseHandbookPrices.Value)
+            {
+                Plugin.LogSource.LogInfo("LootNet: handbook prices enabled, skipping flea fetch");
+                await FetchHandbookPrices();
+                return;
+            }
+
             if (await TryFetchFleaPrices()) return;
             Plugin.LogSource.LogWarning("LootNet: server mod not available, falling back to handbook prices");
             await FetchHandbookPrices();
@@ -34,7 +40,7 @@ namespace LootNet.Services
             try
             {
                 using HttpRequestMessage request = RequestHandler.HttpClient.CreateNewHttpRequest(
-                    HttpMethod.Get, "/showlootvalue/prices");
+                    HttpMethod.Get, "/lootnet/prices");
                 using HttpResponseMessage response = await RequestHandler.HttpClient.HttpClient.SendAsync(request);
 
                 if (!response.IsSuccessStatusCode) return false;

@@ -22,6 +22,7 @@ namespace LootNet
         public static LootValueDisplay Display;
         public static RaidSummaryDisplay SummaryDisplay;
         public static ConfigEntry<bool> VideoEnabled;
+        public static ConfigEntry<bool> UseHandbookPrices;
 
         private static void PatchAllKillMethods()
         {
@@ -57,6 +58,8 @@ namespace LootNet
             LogSource = Logger;
             VideoEnabled = Config.Bind("Display", "Secret Summary Feature", false,
                 "You found it. Enable this and see what happens after your next raid.");
+            UseHandbookPrices = Config.Bind("Prices", "Use Handbook Prices", false,
+                "Use handbook (base) prices instead of flea market prices. Useful if you have flea market removed or use trader/custom trader mods.");
 
             var priceObj = new GameObject("LootNetPriceService");
             DontDestroyOnLoad(priceObj);
@@ -67,13 +70,10 @@ namespace LootNet
             DontDestroyOnLoad(trackerObj);
             trackerObj.AddComponent<RaidTracker>();
 
-            // LootValueDisplay is a lazy singleton — first access creates it
             Display = LootValueDisplay.Instance;
-
-            // RaidSummaryDisplay is a lazy singleton — first access creates it
             SummaryDisplay = RaidSummaryDisplay.Instance;
 
-            // Pre-buffer the summary video once at startup (menus), zero mid-raid cost
+            // buffer the video at menu load so there's no hitch mid-raid
             if (VideoEnabled.Value)
                 SummaryDisplay.StartCoroutine(SummaryDisplay.PrepareVideoEarly());
 

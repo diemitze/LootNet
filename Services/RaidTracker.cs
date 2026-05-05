@@ -31,17 +31,14 @@ namespace LootNet.Services
 
         private static readonly Dictionary<string, (string Name, double Value)> _foundItems = new();
         private static readonly Dictionary<string, (string Name, int Kills)> _botKills = new();
-        private static readonly HashSet<string> _recentKillIds = new(); // dedup base+override double-fires
-        private static readonly HashSet<string> _confirmedFollowerIds = new(); // checked at kill time while PIT still has them registered
+        private static readonly HashSet<string> _recentKillIds = new(); // base + override both fire; deduplicate by profileId
+        private static readonly HashSet<string> _confirmedFollowerIds = new(); // captured at kill time — PIT unregisters followers when they die
         private static int _pmcKills;
         private static int _scavKills;
 
-        // PIT Fireteam soft-dependency — resolved once via reflection
         private static bool _pitResolved;
         private static MethodInfo _pitIsFollower;
 
-        // Computed live from _foundItems so the in-raid display and end-of-raid
-        // summary are always derived from exactly the same data — no running-total drift.
         public static double DisplayValue
         {
             get
@@ -53,8 +50,6 @@ namespace LootNet.Services
         }
 
         private void Awake() => Instance = this;
-
-        // ── Raid start ────────────────────────────────────────────────────────────
 
         public static void OnRaidEntered(Player player)
         {
@@ -68,11 +63,11 @@ namespace LootNet.Services
             _pmcKills  = 0;
             _scavKills = 0;
             IsScavRaid = player.Side == EPlayerSide.Savage;
-            ResolvePit(); // resolve early so IsFollowerProfileId is ready when kills fire
+            ResolvePit(); // needs to be ready before the first kill fires
 
             if (IsScavRaid)
             {
-                // Pre-track all scav spawn gear so it counts without needing to be moved
+                // scav gear counts from spawn, not just stuff picked up during the raid
                 foreach (var item in player.Inventory.GetPlayerItems(EPlayerItems.Equipment))
                     foreach (var child in item.GetAllItems())
                         TrackItemAdded(child);
@@ -84,8 +79,6 @@ namespace LootNet.Services
                         SpawnedItemIds.Add(child.Id.ToString());
             }
         }
-
-        // ── Item tracking (called from patches) ───────────────────────────────────
 
         public static void TrackItemAdded(Item item)
         {
@@ -106,7 +99,6 @@ namespace LootNet.Services
             _foundItems.Remove(id);
         }
 
-        /// <summary>Returns true the first time this profileId is seen this raid (dedup guard).</summary>
         public static bool MarkKillSeen(string profileId) => _recentKillIds.Add(profileId);
 
         public static void TrackKill(bool isPmc)
@@ -122,8 +114,7 @@ namespace LootNet.Services
             _botKills.TryGetValue(id, out var existing);
             _botKills[id] = (name, existing.Kills + 1);
 
-            // Check PIT registration NOW — followers get unregistered when they die,
-            // so by raid-end IsFollowerProfileId would return false for dead followers.
+            // check PIT now while the follower is still registered; dead followers get unregistered before raid-end
             if (_pitIsFollower != null && !_confirmedFollowerIds.Contains(id))
             {
                 try
@@ -134,8 +125,6 @@ namespace LootNet.Services
                 catch { }
             }
         }
-
-        // ── Raid end ──────────────────────────────────────────────────────────────
 
         public static RaidStats BuildPendingStats()
         {
@@ -168,8 +157,6 @@ namespace LootNet.Services
             _scavKills    = 0;
             IsScavRaid    = false;
         }
-
-        // ── PIT Fireteam soft-dependency ──────────────────────────────────────────
 
         private static List<(string Name, int Kills)> TryGetFireteamStats()
         {
@@ -212,8 +199,6 @@ namespace LootNet.Services
         }
     }
 
-    // ── Raid-start patch ──────────────────────────────────────────────────────────
-
     internal class RaidStartPatch : ModulePatch
     {
         protected override MethodBase GetTargetMethod()
@@ -228,26 +213,21 @@ namespace LootNet.Services
         }
     }
 
-    // ── Kill tracking ─────────────────────────────────────────────────────────────
-    // Applied via raw Harmony in Plugin.cs so every subclass override is caught,
-    // not just the base Player implementation.
-
+    // patched via raw Harmony in Plugin.cs so every Player subclass override is caught
     internal static class KillTracker
     {
-        // Second parameter by position — name varies across EFT subclasses
+        // __0 is the second param by position — the name varies across EFT Player subclasses
         internal static void Postfix(Player __instance, IPlayer __0, DamageInfoStruct __1)
         {
             try
             {
                 var mainPlayer = Singleton<GameWorld>.Instance?.MainPlayer;
                 if (mainPlayer == null) return;
-                if (__instance.ProfileId == mainPlayer.ProfileId) return; // ignore self-kill
+                if (__instance.ProfileId == mainPlayer.ProfileId) return;
 
-                // Resolve aggressor: use method param first, fall back to damageInfo.Player.iPlayer
                 IPlayer aggressor = __0 ?? __1.Player?.iPlayer;
                 if (aggressor == null) return;
 
-                // Deduplicate: base+override both patched — guard with per-raid set
                 if (!RaidTracker.MarkKillSeen(__instance.ProfileId)) return;
 
                 bool isPmc = __instance.Side == EPlayerSide.Bear
