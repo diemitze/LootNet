@@ -29,7 +29,7 @@ namespace LootNet.Services
         public static HashSet<string> SpawnedItemIds { get; } = new();
         public static bool IsScavRaid { get; private set; }
 
-        private static readonly Dictionary<string, (string Name, double Value)> _foundItems = new();
+        private static readonly Dictionary<string, (string Name, string TemplateId, double Value)> _foundItems = new();
         private static readonly Dictionary<string, (string Name, int Kills)> _botKills = new();
         private static readonly HashSet<string> _recentKillIds = new(); // base + override both fire; deduplicate by profileId
         private static readonly HashSet<string> _confirmedFollowerIds = new(); // captured at kill time — PIT unregisters followers when they die
@@ -65,16 +65,18 @@ namespace LootNet.Services
             IsScavRaid = player.Side == EPlayerSide.Savage;
             ResolvePit(); // needs to be ready before the first kill fires
 
+            var spawnSlots = EPlayerItems.InRaidItems;
+
             if (IsScavRaid)
             {
                 // scav gear counts from spawn, not just stuff picked up during the raid
-                foreach (var item in player.Inventory.GetPlayerItems(EPlayerItems.Equipment))
+                foreach (var item in player.Inventory.GetPlayerItems(spawnSlots))
                     foreach (var child in item.GetAllItems())
                         TrackItemAdded(child);
             }
             else
             {
-                foreach (var item in player.Inventory.GetPlayerItems(EPlayerItems.Equipment))
+                foreach (var item in player.Inventory.GetPlayerItems(spawnSlots))
                     foreach (var child in item.GetAllItems())
                         SpawnedItemIds.Add(child.Id.ToString());
             }
@@ -82,14 +84,23 @@ namespace LootNet.Services
 
         public static void TrackItemAdded(Item item)
         {
-            if (!Plugin.PriceService.IsLoaded) return;
-
             string id = item.Id.ToString();
             if (!IsScavRaid && SpawnedItemIds.Contains(id)) return;
             if (_foundItems.ContainsKey(id)) return;
 
-            double price = Plugin.PriceService.GetPrice(item.TemplateId.ToString());
-            _foundItems[id] = (item.LocalizedName(), price);
+            string templateId = item.TemplateId.ToString();
+            double price = Plugin.PriceService.IsLoaded ? Plugin.PriceService.GetPrice(templateId) : 0;
+            _foundItems[id] = (item.LocalizedName(), templateId, price);
+        }
+
+        public static void RefreshPrices()
+        {
+            var keys = _foundItems.Keys.ToList();
+            foreach (var key in keys)
+            {
+                var (name, templateId, _) = _foundItems[key];
+                _foundItems[key] = (name, templateId, Plugin.PriceService.GetPrice(templateId));
+            }
         }
 
         public static void TrackItemRemoved(Item item)
@@ -132,7 +143,7 @@ namespace LootNet.Services
             bool hasKills = _pmcKills > 0 || _scavKills > 0;
             if (!hasLoot && !hasKills) return null;
 
-            var found = _foundItems.Values.Where(x => x.Value > 0).ToList();
+            var found = _foundItems.Values.Where(x => x.Value > 0).Select(x => (x.Name, x.Value)).ToList();
             found.Sort((a, b) => b.Value.CompareTo(a.Value));
 
             return new RaidStats

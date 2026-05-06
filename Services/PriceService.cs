@@ -64,6 +64,7 @@ namespace LootNet.Services
                 Prices = JsonConvert.DeserializeObject<Dictionary<string, double>>(innerJson) ?? new();
                 IsLoaded = true;
                 Plugin.LogSource.LogInfo($"LootNet: loaded {Prices.Count} flea prices");
+                RaidTracker.RefreshPrices();
                 return true;
             }
             catch (Exception ex)
@@ -108,6 +109,7 @@ namespace LootNet.Services
 
                 IsLoaded = true;
                 Plugin.LogSource.LogInfo($"LootNet: loaded {Prices.Count} handbook prices (fallback)");
+                RaidTracker.RefreshPrices();
             }
             catch (Exception ex)
             {
