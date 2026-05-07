@@ -1,8 +1,0 @@
-{
-    "name": "LootNetServer",
-    "version": "1.0.0",
-    "main": "LootNetServer.dll",
-    "license": "MIT",
-    "author": "20fpsguy",
-    "sptVersion": "~4.0.0"
-}
