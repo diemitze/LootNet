@@ -18,6 +18,7 @@ namespace LootNet.Patches
         private static void PatchPostfix(Player __instance, GEventArgs1 eventArgs)
         {
             if (!__instance.IsYourPlayer) return;
+            if (!RaidTracker.IsInRaid) return;
 
             foreach (var item in eventArgs.Item.GetAllItems())
                 RaidTracker.TrackItemAdded(item);
@@ -35,6 +36,7 @@ namespace LootNet.Patches
         private static void PatchPostfix(Player __instance, GEventArgs3 eventArgs)
         {
             if (!__instance.IsYourPlayer) return;
+            if (!RaidTracker.IsInRaid) return;
 
             foreach (var item in eventArgs.Item.GetAllItems())
                 RaidTracker.TrackItemRemoved(item);
@@ -51,6 +53,7 @@ namespace LootNet.Patches
         [PatchPostfix]
         private static void PatchPostfix()
         {
+            if (!RaidTracker.IsInRaid) return;
             LootValueDisplay.Instance.SetValue(RaidTracker.DisplayValue);
             LootValueDisplay.Instance.Show();
         }

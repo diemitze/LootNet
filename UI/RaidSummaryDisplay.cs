@@ -294,12 +294,12 @@ namespace LootNet.UI
             foreach (var r in _itemRows)
             {
                 r.Cg.alpha = 0f;
-                r.Rt.anchoredPosition += new Vector2(-SlideDistance, 0f);
+                r.Rt.anchoredPosition = new Vector2(-SlideDistance, r.Rt.anchoredPosition.y);
             }
             foreach (var r in _fireteamRows)
             {
                 r.Cg.alpha = 0f;
-                r.Rt.anchoredPosition += new Vector2(-SlideDistance, 0f);
+                r.Rt.anchoredPosition = new Vector2(-SlideDistance, r.Rt.anchoredPosition.y);
             }
 
             if (_panel != null)

@@ -28,6 +28,7 @@ namespace LootNet.Services
 
         public static HashSet<string> SpawnedItemIds { get; } = new();
         public static bool IsScavRaid { get; private set; }
+        public static bool IsInRaid   { get; private set; }
 
         private static readonly Dictionary<string, (string Name, string TemplateId, double Value)> _foundItems = new();
         private static readonly Dictionary<string, (string Name, int Kills)> _botKills = new();
@@ -63,6 +64,7 @@ namespace LootNet.Services
             _pmcKills  = 0;
             _scavKills = 0;
             IsScavRaid = player.Side == EPlayerSide.Savage;
+            IsInRaid   = true;
             ResolvePit(); // needs to be ready before the first kill fires
 
             var spawnSlots = EPlayerItems.InRaidItems;
@@ -167,6 +169,7 @@ namespace LootNet.Services
             _pmcKills     = 0;
             _scavKills    = 0;
             IsScavRaid    = false;
+            IsInRaid      = false;
         }
 
         private static List<(string Name, int Kills)> TryGetFireteamStats()
