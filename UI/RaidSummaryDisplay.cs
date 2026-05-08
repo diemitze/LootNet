@@ -894,8 +894,8 @@ namespace LootNet.UI
             for (int i = 0; i < 7; i++)
                 BuildItemRow(i);
 
-            // Fireteam section (below full width)
-            float teamY = BodyTop - 40f - RowHeight * 7f - 10f;
+            // Fireteam section — sits just above the bottom of the panel
+            float teamY = -(PanelH - 16f);
             _fireteamSection = MakeRect("TeamSection", panelGo.transform);
             var fsSectionRt = _fireteamSection.GetComponent<RectTransform>();
             fsSectionRt.anchorMin = new Vector2(0f, 1f); fsSectionRt.anchorMax = new Vector2(1f, 1f);
