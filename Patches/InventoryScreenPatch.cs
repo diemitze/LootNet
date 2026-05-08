@@ -10,7 +10,6 @@ namespace LootNet.Patches
 {
     internal class RaidEndPatch : ModulePatch
     {
-        // Guard against SessionResultExitStatus.Awake firing multiple times
         private static bool _fired;
 
         protected override MethodBase GetTargetMethod()
@@ -28,8 +27,6 @@ namespace LootNet.Patches
 
             if (stats == null) { _fired = false; return; }
 
-            // Hide end screen visually via CanvasGroup alpha (keeps GameObject active
-            // so the character model and animations initialise correctly).
             var endCg = __instance.gameObject.GetComponent<CanvasGroup>()
                      ?? __instance.gameObject.AddComponent<CanvasGroup>();
             endCg.alpha = 0f;

@@ -34,9 +34,10 @@ namespace LootNet.UI
         private const float AutoDismissSeconds = 14f;
         private const float FadeInDuration     = 0.45f;
         private const float CountUpDuration    = 2.2f;
-        private const float StaggerDelay       = 0.10f;
+        private const float StaggerDelay       = 0.25f;
         private const float RowHeight          = 52f;
         private const float SlideDistance      = 60f;
+        private const float RowSlideDuration   = 0.28f;
 
         private CanvasGroup         _canvasGroup;
         private RawImage            _bgImage;
@@ -46,7 +47,15 @@ namespace LootNet.UI
         private TextMeshProUGUI     _titleText;
         private TextMeshProUGUI     _subtitleText;
         private TextMeshProUGUI     _valueText;
-        private TextMeshProUGUI     _statsText;
+
+        // Left-column stat labels (show final value) and counter labels (count up)
+        private TextMeshProUGUI     _statItemsNum;
+        private TextMeshProUGUI     _statPmcNum;
+        private TextMeshProUGUI     _statScavNum;
+        private CanvasGroup         _statItemsCg;
+        private CanvasGroup         _statPmcCg;
+        private CanvasGroup         _statScavCg;
+
         private TextMeshProUGUI     _dismissText;
         private RectTransform       _progressBarFill;
         private Transform           _topItemsContainer;
@@ -54,6 +63,9 @@ namespace LootNet.UI
         private GameObject          _fireteamSection;
         private Transform           _fireteamContainer;
         private Texture2D           _vignetteTexture;
+
+        // Column divider that draws itself downward
+        private RectTransform       _colDivider;
 
         private GameObject          _videoPanel;
         private CanvasGroup         _videoCg;
@@ -63,8 +75,8 @@ namespace LootNet.UI
         private const float         VideoMaxWidth = 320f;
         private const string        VideoFileName = "weii weii.mp4";
 
-        private readonly List<ItemRowData> _itemRows         = new();
-        private readonly List<ItemRowData> _fireteamRows     = new();
+        private readonly List<ItemRowData> _itemRows     = new();
+        private readonly List<ItemRowData> _fireteamRows = new();
 
         private float      _timer;
         private bool       _visible;
@@ -147,7 +159,6 @@ namespace LootNet.UI
                     _canvasGroup.alpha = Mathf.Lerp(startAlpha, 0f, t / fadeDur);
                 yield return null;
             }
-
             if (_root != null) _root.SetActive(false);
             if (_canvasGroup != null) _canvasGroup.alpha = 0f;
             OnHidden?.Invoke();
@@ -164,6 +175,8 @@ namespace LootNet.UI
             _timer   = AutoDismissSeconds;
 
             PlaySound("BackpackOpen");
+
+            // Fade panel in
             float t = 0f;
             while (t < FadeInDuration)
             {
@@ -173,6 +186,7 @@ namespace LootNet.UI
             }
             _canvasGroup.alpha = 1f;
 
+            // Panel slides up slightly
             if (_panel != null)
             {
                 var startPos = _panel.anchoredPosition + new Vector2(0f, -40f);
@@ -197,49 +211,49 @@ namespace LootNet.UI
 
             yield return new WaitForSeconds(0.1f);
 
+            // Column divider draws down
+            StartCoroutine(DrawDivider(0.45f));
+
+            // Value text appears
             Color valueColor = ValueColor(stats.TotalFoundValue);
             _valueText.color = new Color(valueColor.r, valueColor.g, valueColor.b, 0f);
             yield return StartCoroutine(FadeText(_valueText, new Color(valueColor.r, valueColor.g, valueColor.b), 0.2f));
+            _valueText.text = "₽ 0";
 
-            EnsureItemRows(stats.TopItems.Count);
+            // Stat rows slide in and count up
+            StartCoroutine(SlideInStatRow(_statItemsCg, _statItemsNum, stats.ItemsFound, 0.05f, 0.5f, 1.2f));
+            StartCoroutine(SlideInStatRow(_statPmcCg,   _statPmcNum,   stats.PmcKills,  0.30f, 0.5f, 0.9f));
+            StartCoroutine(SlideInStatRow(_statScavCg,  _statScavNum,  stats.ScavKills, 0.55f, 0.5f, 0.7f));
+
+            // Prepare item rows
+            int rowCount = Mathf.Min(stats.TopItems.Count, 7);
+            EnsureItemRows(rowCount);
             PrepareItemRows(stats);
 
-            var thresholds = BuildThresholds(stats);
-            int nextItem   = 0;
-            t = 0f;
+            // Reveal rows with stagger; value counter increments per row (+200ms after each slide starts)
+            double runningVal  = 0;
+            double totalVal    = stats.TotalFoundValue;
+            Color  vc          = ValueColor(totalVal);
 
-            while (t < CountUpDuration)
+            for (int i = 0; i < rowCount; i++)
             {
-                t += Time.deltaTime;
-                float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / CountUpDuration), 3f);
-                double displayed = stats.TotalFoundValue * p;
-                _valueText.text = $"₽ {displayed:N0}";
+                int   idx = i;
+                double itemVal = stats.TopItems[i].Value;
+                runningVal += itemVal;
+                double targetVal = runningVal;
+                bool   isLast    = i == rowCount - 1;
 
-                while (nextItem < stats.TopItems.Count && displayed >= thresholds[nextItem])
-                {
-                    RevealRow(nextItem, stats.TopItems[nextItem].Value);
-                    nextItem++;
-                }
-                yield return null;
-            }
-            _valueText.text = $"₽ {stats.TotalFoundValue:N0}";
-            PlaySound("TradeOperationComplete");
+                RevealRow(idx, itemVal);
 
-            StartCoroutine(PulseScale(_valueText.rectTransform, 1.08f, 0.25f));
-            if (_valuePulseRing != null) StartCoroutine(PulseRing(_valuePulseRing, 0.5f));
+                // Increment the total value counter 200ms after this row starts sliding
+                StartCoroutine(BumpValue(targetVal, totalVal, vc, 0.20f, isLast));
 
-            StartCoroutine(PlayVideoSequence());
-
-            while (nextItem < stats.TopItems.Count)
-            {
-                RevealRow(nextItem, stats.TopItems[nextItem].Value);
-                nextItem++;
                 yield return new WaitForSeconds(StaggerDelay);
             }
 
+            StartCoroutine(PlayVideoSequence());
+
             yield return new WaitForSeconds(0.15f);
-            PlaySound("QuestSubTrackComplete");
-            yield return StartCoroutine(SlideInText(_statsText, 20f, 0.25f));
 
             if (_fireteamSection != null && _fireteamSection.activeSelf)
             {
@@ -259,18 +273,108 @@ namespace LootNet.UI
             _scanLineCoroutine = StartCoroutine(AnimateScanLine());
         }
 
+        // Bumps the value counter to targetVal over dur seconds, then pulses if it's the last item
+        private IEnumerator BumpValue(double targetVal, double totalVal, Color vc, float delay, bool isLast)
+        {
+            yield return new WaitForSeconds(delay);
+
+            double startVal = 0;
+            if (double.TryParse(_valueText.text.Replace("₽ ", "").Replace(",", ""), out double parsed))
+                startVal = parsed;
+
+            float t   = 0f;
+            float dur = 0.26f;
+            while (t < dur)
+            {
+                t += Time.deltaTime;
+                double v = startVal + (targetVal - startVal) * Mathf.Clamp01(t / dur);
+                _valueText.text = $"₽ {v:N0}";
+                yield return null;
+            }
+            _valueText.text = $"₽ {targetVal:N0}";
+
+            if (isLast)
+            {
+                _valueText.text = $"₽ {totalVal:N0}";
+                PlaySound("QuestStarted");
+                StartCoroutine(PulseScale(_valueText.rectTransform, 1.08f, 0.25f));
+                if (_valuePulseRing != null) StartCoroutine(PulseRing(_valuePulseRing, 0.5f));
+            }
+        }
+
+        private IEnumerator SlideInStatRow(CanvasGroup cg, TextMeshProUGUI numLabel, int target, float delay, float slideDur, float countDur)
+        {
+            yield return new WaitForSeconds(delay);
+
+            PlaySound("MenuCheckBox");
+
+            var rt       = cg.GetComponent<RectTransform>();
+            var startPos = rt.anchoredPosition - new Vector2(20f, 0f);
+            rt.anchoredPosition = startPos;
+            cg.alpha = 0f;
+
+            float t = 0f;
+            while (t < slideDur)
+            {
+                t += Time.deltaTime;
+                float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / slideDur), 3f);
+                rt.anchoredPosition = Vector2.Lerp(startPos, startPos + new Vector2(20f, 0f), p);
+                cg.alpha = Mathf.Clamp01(t / slideDur * 2f);
+                yield return null;
+            }
+            cg.alpha = 1f;
+
+            // Count up
+            t = 0f;
+            while (t < countDur)
+            {
+                t += Time.deltaTime;
+                int v = Mathf.RoundToInt(target * Mathf.Clamp01(t / countDur));
+                numLabel.text = v.ToString();
+                yield return null;
+            }
+            numLabel.text = target.ToString();
+        }
+
+        private IEnumerator DrawDivider(float dur)
+        {
+            if (_colDivider == null) yield break;
+            _colDivider.gameObject.SetActive(true);
+            PlaySound("MenuOpenContainer");
+            float t = 0f;
+            while (t < dur)
+            {
+                t += Time.deltaTime;
+                float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / dur), 3f);
+                _colDivider.anchorMax = new Vector2(_colDivider.anchorMax.x, 1f - p);
+                yield return null;
+            }
+            _colDivider.anchorMax = new Vector2(_colDivider.anchorMax.x, 0f);
+        }
+
         private void ResetUI(RaidStats stats)
         {
-            _titleText.text    = "RAID COMPLETE";
-            _titleText.color   = new Color(1f, 0.84f, 0f, 0f);
-            _subtitleText.text = "LOOT SUMMARY";
+            _titleText.text     = "RAID COMPLETE";
+            _titleText.color    = new Color(1f, 0.84f, 0f, 0f);
+            _subtitleText.text  = "LOOT SUMMARY";
             _subtitleText.color = new Color(0.55f, 0.55f, 0.55f, 0f);
-            _valueText.text    = "₽ 0";
-            _valueText.color   = Color.clear;
-            _statsText.text    = BuildStatsLine(stats);
-            _statsText.color   = new Color(0.78f, 0.78f, 0.78f, 0f);
-            _dismissText.text  = string.Empty;
-            _dismissText.color = Color.clear;
+            _valueText.text     = "₽ 0";
+            _valueText.color    = Color.clear;
+            _dismissText.text   = string.Empty;
+            _dismissText.color  = Color.clear;
+
+            if (_statItemsNum != null) _statItemsNum.text = "0";
+            if (_statPmcNum   != null) _statPmcNum.text   = "0";
+            if (_statScavNum  != null) _statScavNum.text  = "0";
+            if (_statItemsCg  != null) _statItemsCg.alpha = 0f;
+            if (_statPmcCg    != null) _statPmcCg.alpha   = 0f;
+            if (_statScavCg   != null) _statScavCg.alpha  = 0f;
+
+            if (_colDivider != null)
+            {
+                _colDivider.anchorMax = new Vector2(_colDivider.anchorMax.x, 1f);
+                _colDivider.gameObject.SetActive(false);
+            }
 
             bool hasFireteam = stats.FireteamMembers != null && stats.FireteamMembers.Count > 0;
             if (_fireteamSection != null)
@@ -278,11 +382,9 @@ namespace LootNet.UI
                 _fireteamSection.SetActive(hasFireteam);
                 if (hasFireteam)
                 {
-                    // Size section to fit however many followers there are (max 4)
                     int count = Mathf.Min(stats.FireteamMembers.Count, 4);
                     var fsRt  = _fireteamSection.GetComponent<RectTransform>();
                     fsRt.sizeDelta = new Vector2(-40f, 28f + RowHeight * count + 6f);
-
                     EnsureFireteamRows(count);
                     PrepareFireteamRows(stats.FireteamMembers);
                 }
@@ -302,38 +404,24 @@ namespace LootNet.UI
                 r.Rt.anchoredPosition = new Vector2(-SlideDistance, r.Rt.anchoredPosition.y);
             }
 
-            if (_panel != null)
-            {
-                _panel.anchoredPosition = Vector2.zero;
-                bool hasTeam = stats.FireteamMembers != null && stats.FireteamMembers.Count > 0;
-                int  teamCount = hasTeam ? Mathf.Min(stats.FireteamMembers.Count, 4) : 0;
-                float extraH = hasTeam ? 28f + RowHeight * teamCount + 16f : 0f;
-                _panel.sizeDelta = new Vector2(780f, 800f + extraH);
-            }
-
-            // Pause + seek keeps isPrepared intact; Stop() would destroy it
-            if (_videoPlayer != null)
-            {
-                _videoPlayer.Pause();
-                _videoPlayer.time = 0;
-            }
-            if (_videoCg != null) _videoCg.alpha = 0f;
+            if (_videoPlayer != null) { _videoPlayer.Pause(); _videoPlayer.time = 0; }
+            if (_videoCg     != null) _videoCg.alpha = 0f;
         }
 
         private void PrepareItemRows(RaidStats stats)
         {
-            for (int i = 0; i < stats.TopItems.Count; i++)
+            int count = Mathf.Min(stats.TopItems.Count, 7);
+            for (int i = 0; i < count; i++)
             {
                 var (name, value) = stats.TopItems[i];
                 Color rarityColor = RarityColor(value);
-
-                string priceStr  = value > 0 ? $"₽{value:N0}" : "—";
-                string rarityHex = ColorUtility.ToHtmlStringRGB(rarityColor);
+                string priceStr   = value > 0 ? $"₽{value:N0}" : "—";
+                string rarityHex  = ColorUtility.ToHtmlStringRGB(rarityColor);
 
                 if (i < _itemRows.Count)
                 {
                     var row = _itemRows[i];
-                    row.Label.text = $"<color=#{rarityHex}>{name}</color>  <color=#666666>{priceStr}</color>";
+                    row.Label.text     = $"<color=#{rarityHex}>{name}</color>  <color=#555555>{priceStr}</color>";
                     row.RankBadge.text = RankLabel(i);
                     row.RankBg.color   = RankColor(i);
                     row.AccentBar.color = rarityColor;
@@ -357,9 +445,7 @@ namespace LootNet.UI
                 Color accent = kills >= 3 ? new Color(0.85f, 0.35f, 0.35f)
                              : kills >= 1 ? new Color(0.55f, 0.65f, 0.55f)
                              :              new Color(0.35f, 0.35f, 0.35f);
-
                 string killStr = kills == 1 ? "1 kill" : $"{kills} kills";
-
                 var row = _fireteamRows[i];
                 row.Label.text     = $"{name}  <color=#555555>{killStr}</color>";
                 row.RankBadge.text = kills > 0 ? $"×{kills}" : "—";
@@ -380,12 +466,10 @@ namespace LootNet.UI
 
             var cg = row.AddComponent<CanvasGroup>();
             cg.alpha = 0f;
+            row.AddComponent<Image>().color = new Color(0.05f, 0.07f, 0.05f, index % 2 == 0 ? 0.6f : 0.3f);
 
-            var rowBg = row.AddComponent<Image>();
-            rowBg.color = new Color(0.05f, 0.07f, 0.05f, index % 2 == 0 ? 0.6f : 0.3f);
-
-            var accentGo = MakeRect("Accent", row.transform);
-            var accentRt = accentGo.GetComponent<RectTransform>();
+            var accentGo  = MakeRect("Accent", row.transform);
+            var accentRt  = accentGo.GetComponent<RectTransform>();
             accentRt.anchorMin = Vector2.zero; accentRt.anchorMax = new Vector2(0f, 1f);
             accentRt.pivot = new Vector2(0f, 0.5f);
             accentRt.anchoredPosition = Vector2.zero; accentRt.sizeDelta = new Vector2(3f, 0f);
@@ -414,38 +498,20 @@ namespace LootNet.UI
 
             _fireteamRows.Add(new ItemRowData
             {
-                Cg        = cg,
-                Rt        = rr,
-                Label     = label,
-                RankBadge = badgeLabel,
-                RankBg    = badgeBg,
-                AccentBar = accentImg,
+                Cg = cg, Rt = rr, Label = label, RankBadge = badgeLabel, RankBg = badgeBg, AccentBar = accentImg
             });
-        }
-
-        private static double[] BuildThresholds(RaidStats stats)
-        {
-            var thresholds = new double[stats.TopItems.Count];
-            double cumulative = 0;
-            for (int i = 0; i < stats.TopItems.Count; i++)
-            {
-                thresholds[i]  = cumulative;
-                cumulative    += stats.TopItems[i].Value;
-            }
-            return thresholds;
         }
 
         private void RevealRow(int i, double value = 0)
         {
             if (i >= _itemRows.Count) return;
             var row = _itemRows[i];
-            StartCoroutine(SlideInRow(row, 0.2f));
+            StartCoroutine(SlideInRow(row, RowSlideDuration));
 
             if      (value >= 500_000) PlaySound("QuestCompleted",       "RepairComplete");
             else if (value >= 150_000) PlaySound("MenuInstallModVital",   "RepairComplete");
             else                       PlaySound("InsuranceItemOnInsure", "ButtonClick");
         }
-
 
         private static IEnumerator SlideInRow(ItemRowData row, float dur)
         {
@@ -466,7 +532,7 @@ namespace LootNet.UI
 
         private static IEnumerator SlideInText(TextMeshProUGUI label, float slideAmt, float dur)
         {
-            var rt = label.rectTransform;
+            var rt       = label.rectTransform;
             var startPos = rt.anchoredPosition - new Vector2(0f, slideAmt);
             rt.anchoredPosition = startPos;
             Color target = new Color(label.color.r, label.color.g, label.color.b);
@@ -541,9 +607,7 @@ namespace LootNet.UI
             {
                 t += Time.deltaTime;
                 float p     = t / dur;
-                float flash = p < 0.25f
-                    ? p / 0.25f
-                    : Mathf.Pow(1f - (p - 0.25f) / 0.75f, 2f);
+                float flash = p < 0.25f ? p / 0.25f : Mathf.Pow(1f - (p - 0.25f) / 0.75f, 2f);
                 label.color = Color.Lerp(gold, Color.white, flash * 0.75f);
                 yield return null;
             }
@@ -605,7 +669,6 @@ namespace LootNet.UI
 
             _videoCg = _videoPanel.AddComponent<CanvasGroup>();
             _videoCg.alpha = 0f;
-
             _videoPanel.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.85f);
 
             var imgGo = MakeRect("VideoImage", _videoPanel.transform);
@@ -643,15 +706,15 @@ namespace LootNet.UI
             uint vh = _videoPlayer.height;
             if (vw > 0 && vh > 0)
             {
-                float h = VideoMaxWidth * vh / vw;
-                var rt = _videoPanel.GetComponent<RectTransform>();
+                float h  = VideoMaxWidth * vh / vw;
+                var   rt = _videoPanel.GetComponent<RectTransform>();
                 rt.sizeDelta = new Vector2(VideoMaxWidth, h);
             }
 
             if (_videoRenderTexture != null) Destroy(_videoRenderTexture);
             _videoRenderTexture = new RenderTexture((int)_videoPlayer.width, (int)_videoPlayer.height, 0);
             _videoPlayer.targetTexture = _videoRenderTexture;
-            _videoImage.texture = _videoRenderTexture;
+            _videoImage.texture        = _videoRenderTexture;
 
             yield return StartCoroutine(FadeInCanvasGroup(_videoCg, 0.6f));
 
@@ -660,8 +723,6 @@ namespace LootNet.UI
             _videoPlayer.Play();
 
             while (!ended) yield return null;
-
-            // Pause keeps the render texture intact; Stop() would destroy it
             _videoPlayer.Pause();
         }
 
@@ -683,15 +744,18 @@ namespace LootNet.UI
             _root = MakeRect("SummaryRoot", transform);
             Stretch(_root.GetComponent<RectTransform>());
 
+            // Background screenshot
             var screenshotGo = MakeRect("Screenshot", _root.transform);
             Stretch(screenshotGo.GetComponent<RectTransform>());
             _bgImage = screenshotGo.AddComponent<RawImage>();
             _bgImage.color = new Color(1f, 1f, 1f, 0.35f);
 
+            // Dark overlay
             var overlay = MakeRect("Overlay", _root.transform);
             Stretch(overlay.GetComponent<RectTransform>());
             overlay.AddComponent<Image>().color = new Color(0.01f, 0.01f, 0.03f, 0.82f);
 
+            // Vignette
             _vignetteTexture = BuildVignetteTexture();
             var vigGo = MakeRect("Vignette", _root.transform);
             Stretch(vigGo.GetComponent<RectTransform>());
@@ -699,6 +763,7 @@ namespace LootNet.UI
             vigImg.texture = _vignetteTexture;
             vigImg.color   = new Color(1f, 1f, 1f, 0.9f);
 
+            // Scan line
             var scanGo = MakeRect("ScanLine", _root.transform);
             var scanRt = scanGo.GetComponent<RectTransform>();
             scanRt.anchorMin = new Vector2(0f, 1f); scanRt.anchorMax = new Vector2(1f, 1f);
@@ -706,118 +771,158 @@ namespace LootNet.UI
             _scanLine = scanGo.AddComponent<Image>();
             _scanLine.color = Color.clear;
 
+            // Click-to-dismiss
             var clickGo = MakeRect("ClickCatcher", _root.transform);
             Stretch(clickGo.GetComponent<RectTransform>());
-            var clickImg = clickGo.AddComponent<Image>();
-            clickImg.color = Color.clear;
+            clickGo.AddComponent<Image>().color = Color.clear;
             var btn = clickGo.AddComponent<Button>();
             btn.transition = Selectable.Transition.None;
             btn.onClick.AddListener(Hide);
 
+            // Gold accent bars
             MakeAccentBar("TopAccent", _root.transform, new Vector2(0f, 1f), new Vector2(1f, 1f), 4f, new Color(1f, 0.84f, 0f, 1f));
             MakeAccentBar("BotAccent", _root.transform, new Vector2(0f, 0f), new Vector2(1f, 0f), 2f, new Color(1f, 0.84f, 0f, 0.35f));
+
+            // ── Main panel (wide) ──
+            const float PanelW  = 1160f;
+            const float PanelH  = 700f;
 
             var panelGo = MakeRect("Panel", _root.transform);
             _panel = panelGo.GetComponent<RectTransform>();
             _panel.anchorMin = new Vector2(0.5f, 0.5f); _panel.anchorMax = new Vector2(0.5f, 0.5f);
-            _panel.pivot = new Vector2(0.5f, 0.5f);
+            _panel.pivot     = new Vector2(0.5f, 0.5f);
             _panel.anchoredPosition = Vector2.zero;
-            _panel.sizeDelta = new Vector2(780f, 800f);
+            _panel.sizeDelta = new Vector2(PanelW, PanelH);
 
-            var panelBg = panelGo.AddComponent<Image>();
-            panelBg.color = new Color(0.04f, 0.04f, 0.07f, 0.92f);
+            panelGo.AddComponent<Image>().color = new Color(0.04f, 0.04f, 0.07f, 0.92f);
 
-            var stripe = MakeRect("LeftStripe", panelGo.transform);
+            // Left gold stripe
+            var stripe   = MakeRect("LeftStripe", panelGo.transform);
             var stripeRt = stripe.GetComponent<RectTransform>();
             stripeRt.anchorMin = Vector2.zero; stripeRt.anchorMax = new Vector2(0f, 1f);
             stripeRt.pivot = new Vector2(0f, 0.5f);
             stripeRt.anchoredPosition = Vector2.zero; stripeRt.sizeDelta = new Vector2(4f, 0f);
             stripe.AddComponent<Image>().color = new Color(1f, 0.84f, 0f, 1f);
 
-            float y = -44f; // top padding
+            // ── Header (full width) ──
+            const float HeaderH = 140f;
 
-            _titleText = MakeTMP("Title", panelGo.transform, 56f, FontStyles.Bold, TextAlignmentOptions.Center);
+            _titleText = MakeTMP("Title", panelGo.transform, 52f, FontStyles.Bold, TextAlignmentOptions.Center);
             _titleText.color = new Color(1f, 0.84f, 0f, 0f);
             _titleText.characterSpacing = 10f;
-            PlaceLabel(_titleText.rectTransform, y, 78f); y -= 90f;
+            PlaceLabel(_titleText.rectTransform, -32f, 72f);
 
-            _subtitleText = MakeTMP("Subtitle", panelGo.transform, 14f, FontStyles.Normal, TextAlignmentOptions.Center);
+            _subtitleText = MakeTMP("Subtitle", panelGo.transform, 13f, FontStyles.Normal, TextAlignmentOptions.Center);
             _subtitleText.color = new Color(0.55f, 0.55f, 0.55f, 0f);
             _subtitleText.characterSpacing = 5f;
-            PlaceLabel(_subtitleText.rectTransform, y, 24f); y -= 42f;
+            PlaceLabel(_subtitleText.rectTransform, -98f, 22f);
 
-            AddHRule(panelGo.transform, y, new Color(1f, 0.84f, 0f, 0.35f)); y -= 30f;
+            // Header rule
+            AddHRule(panelGo.transform, -HeaderH, new Color(1f, 0.84f, 0f, 0.3f));
 
-            _valueText = MakeTMP("Value", panelGo.transform, 76f, FontStyles.Bold, TextAlignmentOptions.Center);
+            // ── Column divider (draws downward) ──
+            var divGo = MakeRect("ColDivider", panelGo.transform);
+            _colDivider = divGo.GetComponent<RectTransform>();
+            _colDivider.anchorMin = new Vector2(0.5f, 0f);
+            _colDivider.anchorMax = new Vector2(0.5f, 1f); // starts full height; DrawDivider shrinks anchorMax.y from 1→0
+            _colDivider.pivot     = new Vector2(0.5f, 1f);
+            _colDivider.offsetMin = new Vector2(-1f, 0f);
+            _colDivider.offsetMax = new Vector2( 1f, -HeaderH);
+            divGo.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.07f);
+            divGo.SetActive(false);
+
+            // ── LEFT COLUMN ──
+            const float ColPad = 48f;
+            const float BodyTop = -HeaderH - 8f;
+
+            // Value label
+            _valueText = MakeTMP("Value", panelGo.transform, 72f, FontStyles.Bold, TextAlignmentOptions.Left);
             _valueText.color = Color.clear;
-            PlaceLabel(_valueText.rectTransform, y, 100f);
+            var vrt = _valueText.rectTransform;
+            vrt.anchorMin = new Vector2(0f, 1f); vrt.anchorMax = new Vector2(0.5f, 1f);
+            vrt.pivot = new Vector2(0f, 1f);
+            vrt.anchoredPosition = new Vector2(ColPad, BodyTop - 20f);
+            vrt.sizeDelta = new Vector2(-ColPad, 90f);
 
+            // Pulse ring behind value
             var ringGo = MakeRect("PulseRing", panelGo.transform);
             var ringRt = ringGo.GetComponent<RectTransform>();
-            ringRt.anchorMin = new Vector2(0.5f, 1f); ringRt.anchorMax = new Vector2(0.5f, 1f);
-            ringRt.pivot = new Vector2(0.5f, 1f);
-            ringRt.anchoredPosition = new Vector2(0f, y - 50f);
-            ringRt.sizeDelta = new Vector2(260f, 90f);
+            ringRt.anchorMin = new Vector2(0f, 1f); ringRt.anchorMax = new Vector2(0.5f, 1f);
+            ringRt.pivot = new Vector2(0f, 1f);
+            ringRt.anchoredPosition = new Vector2(ColPad + 20f, BodyTop - 30f);
+            ringRt.sizeDelta = new Vector2(280f, 80f);
             _valuePulseRing = ringGo.AddComponent<Image>();
             _valuePulseRing.color = Color.clear;
             ringGo.SetActive(false);
 
-            y -= 118f;
+            // Value sublabel
+            var valLabel = MakeTMP("ValueLabel", panelGo.transform, 10f, FontStyles.Normal, TextAlignmentOptions.Left);
+            valLabel.text  = "TOTAL VALUE EXTRACTED";
+            valLabel.color = new Color(0.3f, 0.3f, 0.3f, 1f);
+            valLabel.characterSpacing = 3f;
+            var vlRt = valLabel.rectTransform;
+            vlRt.anchorMin = new Vector2(0f, 1f); vlRt.anchorMax = new Vector2(0.5f, 1f);
+            vlRt.pivot = new Vector2(0f, 1f);
+            vlRt.anchoredPosition = new Vector2(ColPad, BodyTop - 112f);
+            vlRt.sizeDelta = new Vector2(-ColPad, 18f);
 
-            _statsText = MakeTMP("Stats", panelGo.transform, 16f, FontStyles.Normal, TextAlignmentOptions.Center);
-            _statsText.color = new Color(0.78f, 0.78f, 0.78f, 0f);
-            PlaceLabel(_statsText.rectTransform, y, 28f); y -= 52f;
+            // Stat rows
+            float statY = BodyTop - 148f;
+            BuildStatRow(panelGo.transform, "items looted", new Color(1f, 0.84f, 0f),         ColPad, statY,         out _statItemsNum, out _statItemsCg, new Color(1f, 0.84f, 0f));
+            BuildStatRow(panelGo.transform, "PMC kills",    new Color(1f, 0.27f, 0.27f),       ColPad, statY - 64f,   out _statPmcNum,   out _statPmcCg,   new Color(1f, 0.27f, 0.27f));
+            BuildStatRow(panelGo.transform, "scav kills",   new Color(0.55f, 0.55f, 0.55f),    ColPad, statY - 128f,  out _statScavNum,  out _statScavCg,  new Color(0.55f, 0.55f, 0.55f));
 
-            AddHRule(panelGo.transform, y, new Color(0.25f, 0.25f, 0.25f, 0.5f)); y -= 26f;
-
+            // ── RIGHT COLUMN ──
             var hdr = MakeTMP("TopFindsHeader", panelGo.transform, 11f, FontStyles.Bold, TextAlignmentOptions.Center);
             hdr.text = "TOP FINDS";
             hdr.color = new Color(0.35f, 0.35f, 0.35f, 1f);
             hdr.characterSpacing = 4f;
-            PlaceLabel(hdr.rectTransform, y, 18f); y -= 32f;
+            var hdrRt = hdr.rectTransform;
+            hdrRt.anchorMin = new Vector2(0.5f, 1f); hdrRt.anchorMax = new Vector2(1f, 1f);
+            hdrRt.pivot = new Vector2(0.5f, 1f);
+            hdrRt.anchoredPosition = new Vector2(0f, BodyTop - 14f);
+            hdrRt.sizeDelta = new Vector2(0f, 18f);
 
             var tcGo = MakeRect("TopItemsContainer", panelGo.transform);
             var tcRt = tcGo.GetComponent<RectTransform>();
-            tcRt.anchorMin = new Vector2(0f, 1f); tcRt.anchorMax = new Vector2(1f, 1f);
+            tcRt.anchorMin = new Vector2(0.5f, 1f); tcRt.anchorMax = new Vector2(1f, 1f);
             tcRt.pivot = new Vector2(0.5f, 1f);
-            tcRt.anchoredPosition = new Vector2(0f, y);
-            tcRt.sizeDelta = new Vector2(-40f, RowHeight * 5f);
+            tcRt.anchoredPosition = new Vector2(0f, BodyTop - 40f);
+            tcRt.sizeDelta = new Vector2(-16f, RowHeight * 7f);
             _topItemsContainer = tcGo.transform;
 
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < 7; i++)
                 BuildItemRow(i);
 
-            y -= RowHeight * 5f + 10f;
-
+            // Fireteam section (below full width)
+            float teamY = BodyTop - 40f - RowHeight * 7f - 10f;
             _fireteamSection = MakeRect("TeamSection", panelGo.transform);
             var fsSectionRt = _fireteamSection.GetComponent<RectTransform>();
             fsSectionRt.anchorMin = new Vector2(0f, 1f); fsSectionRt.anchorMax = new Vector2(1f, 1f);
             fsSectionRt.pivot     = new Vector2(0.5f, 1f);
-            fsSectionRt.anchoredPosition = new Vector2(0f, y);
-            fsSectionRt.sizeDelta = new Vector2(-40f, 0f); // height set in ResetUI
+            fsSectionRt.anchoredPosition = new Vector2(0f, teamY);
+            fsSectionRt.sizeDelta = new Vector2(-40f, 0f);
 
             AddHRule(_fireteamSection.transform, 0f, new Color(0.25f, 0.25f, 0.25f, 0.5f));
 
             var teamHdr = MakeTMP("TeamHeader", _fireteamSection.transform, 11f, FontStyles.Bold, TextAlignmentOptions.Center);
-            teamHdr.text            = "TEAMMATES";
-            teamHdr.color           = new Color(0.35f, 0.35f, 0.35f, 1f);
+            teamHdr.text = "TEAMMATES"; teamHdr.color = new Color(0.35f, 0.35f, 0.35f, 1f);
             teamHdr.characterSpacing = 4f;
-            var teamHdrRt = teamHdr.rectTransform;
-            teamHdrRt.anchorMin = new Vector2(0f, 1f); teamHdrRt.anchorMax = new Vector2(1f, 1f);
-            teamHdrRt.pivot = new Vector2(0.5f, 1f);
-            teamHdrRt.anchoredPosition = new Vector2(0f, -6f);
-            teamHdrRt.sizeDelta = new Vector2(0f, 18f);
+            var thRt = teamHdr.rectTransform;
+            thRt.anchorMin = new Vector2(0f, 1f); thRt.anchorMax = new Vector2(1f, 1f);
+            thRt.pivot = new Vector2(0.5f, 1f);
+            thRt.anchoredPosition = new Vector2(0f, -6f); thRt.sizeDelta = new Vector2(0f, 18f);
 
             var tcTeamGo = MakeRect("TeamContainer", _fireteamSection.transform);
             var tcTeamRt = tcTeamGo.GetComponent<RectTransform>();
             tcTeamRt.anchorMin = new Vector2(0f, 1f); tcTeamRt.anchorMax = new Vector2(1f, 1f);
             tcTeamRt.pivot = new Vector2(0.5f, 1f);
             tcTeamRt.anchoredPosition = new Vector2(0f, -28f);
-            tcTeamRt.sizeDelta = new Vector2(0f, RowHeight * 4f); // max 4 followers
+            tcTeamRt.sizeDelta = new Vector2(0f, RowHeight * 4f);
             _fireteamContainer = tcTeamGo.transform;
-
             _fireteamSection.SetActive(false);
 
+            // Progress bar
             var progTrack = MakeRect("ProgressTrack", panelGo.transform);
             var ptRt = progTrack.GetComponent<RectTransform>();
             ptRt.anchorMin = new Vector2(0f, 0f); ptRt.anchorMax = new Vector2(1f, 0f);
@@ -832,6 +937,7 @@ namespace LootNet.UI
             _progressBarFill.pivot = new Vector2(0f, 0.5f);
             progFillGo.AddComponent<Image>().color = new Color(1f, 0.84f, 0f, 0.65f);
 
+            // Dismiss text
             _dismissText = MakeTMP("Dismiss", _root.transform, 12f, FontStyles.Normal, TextAlignmentOptions.Center);
             _dismissText.color = new Color(0.4f, 0.4f, 0.4f, 0f);
             var dr = _dismissText.rectTransform;
@@ -843,6 +949,47 @@ namespace LootNet.UI
             _root.SetActive(false);
 
             BuildVideoPanel();
+        }
+
+        private void BuildStatRow(Transform parent, string label, Color accentColor, float leftPad, float offsetY,
+            out TextMeshProUGUI numLabel, out CanvasGroup cg, Color numColor)
+        {
+            var rowGo = MakeRect($"Stat_{label}", parent);
+            var rowRt = rowGo.GetComponent<RectTransform>();
+            rowRt.anchorMin = new Vector2(0f, 1f); rowRt.anchorMax = new Vector2(0.5f, 1f);
+            rowRt.pivot = new Vector2(0f, 1f);
+            rowRt.anchoredPosition = new Vector2(leftPad, offsetY);
+            rowRt.sizeDelta = new Vector2(-leftPad - 8f, 52f);
+
+            cg = rowGo.AddComponent<CanvasGroup>();
+            cg.alpha = 0f;
+
+            // Accent bar
+            var accentGo = MakeRect("Accent", rowGo.transform);
+            var accentRt = accentGo.GetComponent<RectTransform>();
+            accentRt.anchorMin = Vector2.zero; accentRt.anchorMax = new Vector2(0f, 1f);
+            accentRt.pivot = new Vector2(0f, 0.5f);
+            accentRt.anchoredPosition = Vector2.zero; accentRt.sizeDelta = new Vector2(3f, 0f);
+            accentGo.AddComponent<Image>().color = accentColor;
+
+            // Number
+            numLabel = MakeTMP($"Num_{label}", rowGo.transform, 28f, FontStyles.Bold, TextAlignmentOptions.Left);
+            numLabel.color = numColor;
+            var nRt = numLabel.rectTransform;
+            nRt.anchorMin = new Vector2(0f, 0f); nRt.anchorMax = new Vector2(0f, 1f);
+            nRt.pivot = new Vector2(0f, 0.5f);
+            nRt.anchoredPosition = new Vector2(10f, 0f);
+            nRt.sizeDelta = new Vector2(56f, 0f);
+
+            // Label text
+            var txt = MakeTMP($"Lbl_{label}", rowGo.transform, 14f, FontStyles.Normal, TextAlignmentOptions.Left);
+            txt.text  = label;
+            txt.color = new Color(0.6f, 0.6f, 0.6f, 1f);
+            var tRt = txt.rectTransform;
+            tRt.anchorMin = new Vector2(0f, 0f); tRt.anchorMax = new Vector2(1f, 1f);
+            tRt.pivot = new Vector2(0f, 0.5f);
+            tRt.offsetMin = new Vector2(72f, 0f);
+            tRt.offsetMax = new Vector2(-4f, 0f);
         }
 
         private void BuildItemRow(int index)
@@ -857,8 +1004,7 @@ namespace LootNet.UI
             var cg = row.AddComponent<CanvasGroup>();
             cg.alpha = 0f;
 
-            var rowBg = row.AddComponent<Image>();
-            rowBg.color = new Color(0.06f, 0.06f, 0.09f, index % 2 == 0 ? 0.6f : 0.3f);
+            row.AddComponent<Image>().color = new Color(0.06f, 0.06f, 0.09f, index % 2 == 0 ? 0.6f : 0.3f);
 
             var accentGo = MakeRect("Accent", row.transform);
             var accentRt = accentGo.GetComponent<RectTransform>();
@@ -866,7 +1012,6 @@ namespace LootNet.UI
             accentRt.pivot = new Vector2(0f, 0.5f);
             accentRt.anchoredPosition = Vector2.zero; accentRt.sizeDelta = new Vector2(3f, 0f);
             var accentImg = accentGo.AddComponent<Image>();
-            accentImg.color = Color.gray;
 
             const float badgeW = 36f;
             var badgeGo = MakeRect("RankBadge", row.transform);
@@ -876,13 +1021,12 @@ namespace LootNet.UI
             badgeRt.anchoredPosition = new Vector2(8f, 0f);
             badgeRt.sizeDelta = new Vector2(badgeW, 22f);
             var badgeBg = badgeGo.AddComponent<Image>();
-            badgeBg.color = Color.gray;
 
             var badgeLabel = MakeTMP($"RankLabel{index}", badgeGo.transform, 11f, FontStyles.Bold, TextAlignmentOptions.Center);
             badgeLabel.color = new Color(0.05f, 0.05f, 0.05f);
             Stretch(badgeLabel.rectTransform);
 
-            var label = MakeTMP($"Label{index}", row.transform, 15f, FontStyles.Normal, TextAlignmentOptions.Left);
+            var label = MakeTMP($"Label{index}", row.transform, 14f, FontStyles.Normal, TextAlignmentOptions.Left);
             label.color = new Color(0.9f, 0.9f, 0.9f);
             var lr = label.rectTransform;
             lr.anchorMin = new Vector2(0f, 0f); lr.anchorMax = new Vector2(1f, 1f);
@@ -892,12 +1036,8 @@ namespace LootNet.UI
 
             _itemRows.Add(new ItemRowData
             {
-                Cg        = cg,
-                Rt        = rr,
-                Label     = label,
-                RankBadge = badgeLabel,
-                RankBg    = badgeBg,
-                AccentBar = accentImg,
+                Cg = cg, Rt = rr, Label = label, RankBadge = badgeLabel,
+                RankBg = badgeBg, AccentBar = accentImg
             });
         }
 
@@ -963,23 +1103,11 @@ namespace LootNet.UI
 
         private static Color RankColor(int i) => i switch
         {
-            0 => new Color(1f,    0.84f, 0f,    1f), // gold
-            1 => new Color(0.75f, 0.75f, 0.75f, 1f), // silver
-            2 => new Color(0.80f, 0.50f, 0.20f, 1f), // bronze
-            _ => new Color(0.20f, 0.20f, 0.22f, 1f), // dark
+            0 => new Color(1f,    0.84f, 0f,    1f),
+            1 => new Color(0.75f, 0.75f, 0.75f, 1f),
+            2 => new Color(0.80f, 0.50f, 0.20f, 1f),
+            _ => new Color(0.20f, 0.20f, 0.22f, 1f),
         };
-
-        private static string BuildStatsLine(RaidStats stats)
-        {
-            var parts = new List<string>();
-            if (stats.ItemsFound > 0)
-                parts.Add($"<color=#FFD700><b>{ stats.ItemsFound}</b></color> item{(stats.ItemsFound == 1 ? "" : "s")} looted");
-            if (stats.PmcKills > 0)
-                parts.Add($"<color=#FF4444><b>{stats.PmcKills}</b> PMC kill{(stats.PmcKills == 1 ? "" : "s")}</color>");
-            if (stats.ScavKills > 0)
-                parts.Add($"<color=#AAAAAA><b>{stats.ScavKills}</b> scav kill{(stats.ScavKills == 1 ? "" : "s")}</color>");
-            return string.Join("   <color=#444444>•</color>   ", parts);
-        }
 
         private static Texture2D BuildVignetteTexture()
         {
@@ -1002,7 +1130,6 @@ namespace LootNet.UI
             tex.Apply();
             return tex;
         }
-
 
         private static Color RarityColor(double v)
         {

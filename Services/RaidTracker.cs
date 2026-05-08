@@ -145,16 +145,27 @@ namespace LootNet.Services
             bool hasKills = _pmcKills > 0 || _scavKills > 0;
             if (!hasLoot && !hasKills) return null;
 
-            var found = _foundItems.Values.Where(x => x.Value > 0).Select(x => (x.Name, x.Value)).ToList();
-            found.Sort((a, b) => b.Value.CompareTo(a.Value));
+            var allFound = _foundItems.Values.Where(x => x.Value > 0).ToList();
+
+            var grouped = allFound
+                .GroupBy(x => x.TemplateId)
+                .Select(g =>
+                {
+                    int    count = g.Count();
+                    double total = g.Sum(x => x.Value);
+                    string name  = count > 1 ? $"{g.First().Name} x{count}" : g.First().Name;
+                    return (name, total);
+                })
+                .OrderByDescending(x => x.total)
+                .ToList();
 
             return new RaidStats
             {
-                ItemsFound      = found.Count,
-                TotalFoundValue = found.Sum(x => x.Value),
+                ItemsFound      = allFound.Count,
+                TotalFoundValue = allFound.Sum(x => x.Value),
                 PmcKills        = _pmcKills,
                 ScavKills       = _scavKills,
-                TopItems        = found.Take(5).ToList(),
+                TopItems        = grouped.Take(5).ToList(),
                 FireteamMembers = TryGetFireteamStats()
             };
         }
