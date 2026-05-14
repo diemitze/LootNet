@@ -79,6 +79,7 @@ namespace LootNet.UI
         private readonly List<ItemRowData> _fireteamRows = new();
 
         private float      _timer;
+        private double     _currentDisplayValue;
         private bool       _visible;
         private Coroutine  _scanLineCoroutine;
 
@@ -103,6 +104,8 @@ namespace LootNet.UI
         private void Update()
         {
             if (!_visible) return;
+            if (Plugin.ManualDismiss.Value) return;
+
             _timer -= Time.deltaTime;
             float frac = Mathf.Clamp01(_timer / AutoDismissSeconds);
             if (_progressBarFill != null)
@@ -173,6 +176,9 @@ namespace LootNet.UI
             _root.SetActive(true);
             _visible = true;
             _timer   = AutoDismissSeconds;
+
+            if (Plugin.ManualDismiss.Value && _progressBarFill != null)
+                _progressBarFill.gameObject.transform.parent.gameObject.SetActive(false);
 
             PlaySound("BackpackOpen");
 
@@ -268,33 +274,33 @@ namespace LootNet.UI
 
             yield return new WaitForSeconds(0.3f);
             PlaySound("MenuEscape");
+            if (Plugin.ManualDismiss.Value && _dismissText != null)
+                _dismissText.text = "Click anywhere to close";
             yield return StartCoroutine(FadeText(_dismissText, new Color(0.4f, 0.4f, 0.4f), 0.3f));
 
             _scanLineCoroutine = StartCoroutine(AnimateScanLine());
         }
 
-        // Bumps the value counter to targetVal over dur seconds, then pulses if it's the last item
         private IEnumerator BumpValue(double targetVal, double totalVal, Color vc, float delay, bool isLast)
         {
             yield return new WaitForSeconds(delay);
 
-            double startVal = 0;
-            if (double.TryParse(_valueText.text.Replace("₽ ", "").Replace(",", ""), out double parsed))
-                startVal = parsed;
-
+            double startVal = _currentDisplayValue;
             float t   = 0f;
             float dur = 0.26f;
             while (t < dur)
             {
                 t += Time.deltaTime;
-                double v = startVal + (targetVal - startVal) * Mathf.Clamp01(t / dur);
-                _valueText.text = $"₽ {v:N0}";
+                _currentDisplayValue = startVal + (targetVal - startVal) * Mathf.Clamp01(t / dur);
+                _valueText.text = $"₽ {_currentDisplayValue:N0}";
                 yield return null;
             }
+            _currentDisplayValue = targetVal;
             _valueText.text = $"₽ {targetVal:N0}";
 
             if (isLast)
             {
+                _currentDisplayValue = totalVal;
                 _valueText.text = $"₽ {totalVal:N0}";
                 PlaySound("QuestStarted");
                 StartCoroutine(PulseScale(_valueText.rectTransform, 1.08f, 0.25f));
@@ -355,11 +361,12 @@ namespace LootNet.UI
         private void ResetUI(RaidStats stats)
         {
             _titleText.text     = "RAID COMPLETE";
-            _titleText.color    = new Color(1f, 0.84f, 0f, 0f);
-            _subtitleText.text  = "LOOT SUMMARY";
-            _subtitleText.color = new Color(0.55f, 0.55f, 0.55f, 0f);
-            _valueText.text     = "₽ 0";
-            _valueText.color    = Color.clear;
+            _titleText.color      = new Color(1f, 0.84f, 0f, 0f);
+            _subtitleText.text    = "LOOT SUMMARY";
+            _subtitleText.color   = new Color(0.55f, 0.55f, 0.55f, 0f);
+            _valueText.text       = "₽ 0";
+            _valueText.color      = Color.clear;
+            _currentDisplayValue  = 0;
             _dismissText.text   = string.Empty;
             _dismissText.color  = Color.clear;
 
@@ -391,7 +398,10 @@ namespace LootNet.UI
             }
 
             if (_progressBarFill != null)
+            {
                 _progressBarFill.anchorMax = new Vector2(1f, 1f);
+                _progressBarFill.gameObject.transform.parent.gameObject.SetActive(true);
+            }
 
             foreach (var r in _itemRows)
             {
@@ -729,6 +739,7 @@ namespace LootNet.UI
         private void OnDestroy()
         {
             if (_videoRenderTexture != null) Destroy(_videoRenderTexture);
+            if (_vignetteTexture    != null) Destroy(_vignetteTexture);
         }
 
 

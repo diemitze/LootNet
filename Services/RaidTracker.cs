@@ -20,6 +20,9 @@ namespace LootNet.Services
         public int ScavKills;
         public List<(string Name, double Value)> TopItems = new();
         public List<(string Name, int Kills)> FireteamMembers;
+        public string MapName;
+        public DateTime RaidTime;
+        public bool IsScavRaid;
     }
 
     public class RaidTracker : MonoBehaviour
@@ -30,15 +33,21 @@ namespace LootNet.Services
         public static bool IsScavRaid { get; private set; }
         public static bool IsInRaid   { get; private set; }
 
+        public static readonly List<RaidStats> RaidHistory = new();
+        internal const int MaxHistory = 15;
+
         private static readonly Dictionary<string, (string Name, string TemplateId, double Value)> _foundItems = new();
         private static readonly Dictionary<string, (string Name, int Kills)> _botKills = new();
         private static readonly HashSet<string> _recentKillIds = new(); // base + override both fire; deduplicate by profileId
         private static readonly HashSet<string> _confirmedFollowerIds = new(); // captured at kill time — PIT unregisters followers when they die
         private static int _pmcKills;
         private static int _scavKills;
+        private static string _pendingMapName;
+        private static DateTime _pendingRaidTime;
 
         private static bool _pitResolved;
         private static MethodInfo _pitIsFollower;
+        private static Func<string, bool> _isFollower;
 
         public static double DisplayValue
         {
@@ -52,10 +61,8 @@ namespace LootNet.Services
 
         private void Awake() => Instance = this;
 
-        public static void OnRaidEntered(Player player)
+        private static void ClearRaidState()
         {
-            if (player == null) return;
-
             SpawnedItemIds.Clear();
             _foundItems.Clear();
             _botKills.Clear();
@@ -63,8 +70,17 @@ namespace LootNet.Services
             _confirmedFollowerIds.Clear();
             _pmcKills  = 0;
             _scavKills = 0;
-            IsScavRaid = player.Side == EPlayerSide.Savage;
-            IsInRaid   = true;
+        }
+
+        public static void OnRaidEntered(Player player)
+        {
+            if (player == null) return;
+
+            ClearRaidState();
+            IsScavRaid      = player.Side == EPlayerSide.Savage;
+            IsInRaid        = true;
+            _pendingMapName = TryGetMapName();
+            _pendingRaidTime = DateTime.Now;
             ResolvePit(); // needs to be ready before the first kill fires
 
             var spawnSlots = EPlayerItems.InRaidItems;
@@ -128,13 +144,9 @@ namespace LootNet.Services
             _botKills[id] = (name, existing.Kills + 1);
 
             // check PIT now while the follower is still registered; dead followers get unregistered before raid-end
-            if (_pitIsFollower != null && !_confirmedFollowerIds.Contains(id))
+            if (_isFollower != null && !_confirmedFollowerIds.Contains(id))
             {
-                try
-                {
-                    if ((bool)_pitIsFollower.Invoke(null, new object[] { id }))
-                        _confirmedFollowerIds.Add(id);
-                }
+                try { if (_isFollower(id)) _confirmedFollowerIds.Add(id); }
                 catch { }
             }
         }
@@ -159,33 +171,35 @@ namespace LootNet.Services
                 .OrderByDescending(x => x.total)
                 .ToList();
 
-            return new RaidStats
+            var stats = new RaidStats
             {
                 ItemsFound      = allFound.Count,
                 TotalFoundValue = allFound.Sum(x => x.Value),
                 PmcKills        = _pmcKills,
                 ScavKills       = _scavKills,
                 TopItems        = grouped.Take(5).ToList(),
-                FireteamMembers = TryGetFireteamStats()
+                FireteamMembers = TryGetFireteamStats(),
+                MapName         = _pendingMapName ?? "Unknown",
+                RaidTime        = _pendingRaidTime,
+                IsScavRaid      = IsScavRaid,
             };
+
+            if (RaidHistory.Count >= MaxHistory) RaidHistory.RemoveAt(0);
+            RaidHistory.Add(stats);
+
+            return stats;
         }
 
         public static void ResetAfterRaid()
         {
-            SpawnedItemIds.Clear();
-            _foundItems.Clear();
-            _botKills.Clear();
-            _recentKillIds.Clear();
-            _confirmedFollowerIds.Clear();
-            _pmcKills     = 0;
-            _scavKills    = 0;
-            IsScavRaid    = false;
-            IsInRaid      = false;
+            ClearRaidState();
+            IsScavRaid = false;
+            IsInRaid   = false;
         }
 
         private static List<(string Name, int Kills)> TryGetFireteamStats()
         {
-            if (_pitIsFollower == null) return null;
+            if (_isFollower == null) return null;
             if (_confirmedFollowerIds.Count == 0) return null;
 
             var result = new List<(string Name, int Kills)>();
@@ -198,6 +212,53 @@ namespace LootNet.Services
             result.Sort((a, b) => b.Kills.CompareTo(a.Kills));
             Plugin.LogSource.LogInfo($"[LootNet] PIT fireteam: {result.Count} follower kill(s) confirmed.");
             return result.Count > 0 ? result : null;
+        }
+
+        private static string TryGetMapName()
+        {
+            try
+            {
+                var gw = Singleton<GameWorld>.Instance;
+                if (gw == null) return "Unknown";
+
+                // Try common property/field names for the location ID
+                foreach (var name in new[] { "LocationId", "Location_0", "_locationId", "location" })
+                {
+                    var prop = typeof(GameWorld).GetProperty(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                    if (prop?.GetValue(gw) is string ps && !string.IsNullOrEmpty(ps))
+                        return FormatMapName(ps);
+
+                    var field = typeof(GameWorld).GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                    if (field?.GetValue(gw) is string fs && !string.IsNullOrEmpty(fs))
+                        return FormatMapName(fs);
+                }
+
+                return "Unknown";
+            }
+            catch { return "Unknown"; }
+        }
+
+        private static readonly Dictionary<string, string> _mapNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["bigmap"]        = "Customs",
+            ["interchange"]   = "Interchange",
+            ["woods"]         = "Woods",
+            ["shoreline"]     = "Shoreline",
+            ["rezervbase"]    = "Reserve",
+            ["lighthouse"]    = "Lighthouse",
+            ["tarkovstreets"] = "Streets",
+            ["sandbox"]       = "Ground Zero",
+            ["sandbox_high"]  = "Ground Zero (High)",
+            ["laboratory"]    = "Labs",
+            ["factory4_day"]  = "Factory (Day)",
+            ["factory4_night"]= "Factory (Night)",
+        };
+
+        private static string FormatMapName(string raw)
+        {
+            if (_mapNames.TryGetValue(raw, out var friendly)) return friendly;
+            // Titlecase the raw string as fallback
+            return System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(raw.ToLower());
         }
 
         private static void ResolvePit()
@@ -216,6 +277,7 @@ namespace LootNet.Services
                 if (isFollower == null) continue;
 
                 _pitIsFollower = isFollower;
+                _isFollower    = (Func<string, bool>)Delegate.CreateDelegate(typeof(Func<string, bool>), isFollower);
                 Plugin.LogSource.LogInfo("[LootNet] PIT Fireteam detected — fireteam stats enabled.");
                 return;
             }

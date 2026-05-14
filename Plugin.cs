@@ -13,7 +13,7 @@ using UnityEngine;
 
 namespace LootNet
 {
-    [BepInPlugin("com.20fpsguy.LootNet", "LootNet", "1.0.4")]
+    [BepInPlugin("com.20fpsguy.LootNet", "LootNet", "1.0.5")]
     [BepInDependency("com.20fpsguy.QuickLootServer", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -23,6 +23,7 @@ namespace LootNet
         public static RaidSummaryDisplay SummaryDisplay;
         public static ConfigEntry<bool> VideoEnabled;
         public static ConfigEntry<bool> UseHandbookPrices;
+        public static ConfigEntry<bool> ManualDismiss;
 
         private static void PatchAllKillMethods()
         {
@@ -60,6 +61,8 @@ namespace LootNet
                 "You found it. Enable this and see what happens after your next raid.");
             UseHandbookPrices = Config.Bind("Prices", "Use Handbook Prices", false,
                 "Use handbook (base) prices instead of flea market prices. Enable this if you use custom traders or have no flea market. Requires a game restart to take effect.");
+            ManualDismiss = Config.Bind("Display", "Manual Dismiss Only", false,
+                "When enabled, the raid summary screen stays open until you click to close it — the auto-dismiss timer is disabled.");
 
             var priceObj = new GameObject("LootNetPriceService");
             DontDestroyOnLoad(priceObj);
@@ -72,6 +75,7 @@ namespace LootNet
 
             Display = LootValueDisplay.Instance;
             SummaryDisplay = RaidSummaryDisplay.Instance;
+            _ = RaidHistoryDisplay.Instance;
 
             // buffer the video at menu load so there's no hitch mid-raid
             if (VideoEnabled.Value)
@@ -83,9 +87,10 @@ namespace LootNet
             new InventoryScreenShowPatch().Enable();
             new InventoryScreenClosePatch().Enable();
             new RaidEndPatch().Enable();
+            new MenuScreenPatch().Enable();
             PatchAllKillMethods();
 
-            LogSource.LogInfo("LootNet v1.0.4 loaded!");
+            LogSource.LogInfo("LootNet v1.0.5 loaded!");
         }
     }
 }
