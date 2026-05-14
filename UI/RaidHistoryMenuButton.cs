@@ -22,7 +22,7 @@ namespace LootNet.UI
             }
 
             // The nav buttons (CHARACTER, TRADERS…) live in a HorizontalLayoutGroup.
-            // Find whichever one has the most children — that's the main nav container.
+            // Find whichever one has the most children - that's the main nav container.
             var container = FindNavContainer(taskBar);
             if (container == null)
             {
@@ -31,7 +31,6 @@ namespace LootNet.UI
             }
 
             _button = BuildNavButton(container);
-            Plugin.LogSource.LogInfo($"[LootNet] Raid History button injected into '{container.name}' ({container.childCount} siblings)");
         }
 
         // ── Finding the right container ──────────────────────────────────────────
@@ -48,8 +47,6 @@ namespace LootNet.UI
                     best = hlg;
                 }
             }
-            if (best != null)
-                Plugin.LogSource.LogInfo($"[LootNet] Nav container: '{best.name}' with {bestCount} children");
             return best?.transform;
         }
 

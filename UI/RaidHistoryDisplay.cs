@@ -148,7 +148,7 @@ namespace LootNet.UI
             sepRt.sizeDelta = new Vector2(0f, 1f);
             sep.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.05f);
 
-            // Left accent bar — coloured by value tier
+            // Left accent bar - coloured by value tier
             Color accentCol = ValueColor(stats.TotalFoundValue);
             var accent   = MakeRect("Accent", card.transform);
             var accentRt = accent.GetComponent<RectTransform>();
@@ -233,7 +233,7 @@ namespace LootNet.UI
             _root = MakeRect("HistoryRoot", transform);
             Stretch(_root.GetComponent<RectTransform>());
 
-            // Semi-transparent overlay — click to close
+            // Semi-transparent overlay - click to close
             var overlay = MakeRect("Overlay", _root.transform);
             Stretch(overlay.GetComponent<RectTransform>());
             overlay.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
@@ -241,7 +241,7 @@ namespace LootNet.UI
             overlayBtn.transition = Selectable.Transition.None;
             overlayBtn.onClick.AddListener(Hide);
 
-            // Drawer — anchored to right edge, slides in/out on X
+            // Drawer - anchored to right edge, slides in/out on X
             var drawerGo = MakeRect("Drawer", _root.transform);
             _drawerRt            = drawerGo.GetComponent<RectTransform>();
             _drawerRt.anchorMin  = new Vector2(1f, 0f);
@@ -250,7 +250,7 @@ namespace LootNet.UI
             _drawerRt.sizeDelta  = new Vector2(DrawerW, 0f);
             _drawerRt.anchoredPosition = new Vector2(DrawerW, 0f);
 
-            // Drawer background — block raycasts so overlay click-close doesn't fire through
+            // Drawer background - block raycasts so overlay click-close doesn't fire through
             var drawerBg = drawerGo.AddComponent<Image>();
             drawerBg.color = new Color(0.06f, 0.06f, 0.09f, 1f);
 

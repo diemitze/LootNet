@@ -69,7 +69,7 @@ namespace LootNet.Services
             }
             catch (Exception ex)
             {
-                Plugin.LogSource.LogWarning($"LootNet: flea price fetch failed — {ex.Message}");
+                Plugin.LogSource.LogWarning($"LootNet: flea price fetch failed - {ex.Message}");
                 return false;
             }
         }
@@ -113,7 +113,7 @@ namespace LootNet.Services
             }
             catch (Exception ex)
             {
-                Plugin.LogSource.LogError($"LootNet: handbook fallback failed — {ex.Message}");
+                Plugin.LogSource.LogError($"LootNet: handbook fallback failed - {ex.Message}");
             }
         }
 

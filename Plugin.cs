@@ -62,7 +62,7 @@ namespace LootNet
             UseHandbookPrices = Config.Bind("Prices", "Use Handbook Prices", false,
                 "Use handbook (base) prices instead of flea market prices. Enable this if you use custom traders or have no flea market. Requires a game restart to take effect.");
             ManualDismiss = Config.Bind("Display", "Manual Dismiss Only", false,
-                "When enabled, the raid summary screen stays open until you click to close it — the auto-dismiss timer is disabled.");
+                "When enabled, the raid summary screen stays open until you click to close it the auto-dismiss timer is disabled.");
 
             var priceObj = new GameObject("LootNetPriceService");
             DontDestroyOnLoad(priceObj);

@@ -82,7 +82,7 @@ namespace LootNet.UI
 
             if (_original == null)
             {
-                Plugin.LogSource.LogWarning("LootNet: SlotViewHeader not found — inventory path may differ");
+                Plugin.LogSource.LogWarning("LootNet: SlotViewHeader not found - inventory path may differ");
                 return;
             }
 

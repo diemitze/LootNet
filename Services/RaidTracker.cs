@@ -39,7 +39,7 @@ namespace LootNet.Services
         private static readonly Dictionary<string, (string Name, string TemplateId, double Value)> _foundItems = new();
         private static readonly Dictionary<string, (string Name, int Kills)> _botKills = new();
         private static readonly HashSet<string> _recentKillIds = new(); // base + override both fire; deduplicate by profileId
-        private static readonly HashSet<string> _confirmedFollowerIds = new(); // captured at kill time — PIT unregisters followers when they die
+        private static readonly HashSet<string> _confirmedFollowerIds = new(); // captured at kill time - PIT unregisters followers when they die
         private static int _pmcKills;
         private static int _scavKills;
         private static string _pendingMapName;
@@ -210,7 +210,6 @@ namespace LootNet.Services
             }
 
             result.Sort((a, b) => b.Kills.CompareTo(a.Kills));
-            Plugin.LogSource.LogInfo($"[LootNet] PIT fireteam: {result.Count} follower kill(s) confirmed.");
             return result.Count > 0 ? result : null;
         }
 
@@ -278,11 +277,11 @@ namespace LootNet.Services
 
                 _pitIsFollower = isFollower;
                 _isFollower    = (Func<string, bool>)Delegate.CreateDelegate(typeof(Func<string, bool>), isFollower);
-                Plugin.LogSource.LogInfo("[LootNet] PIT Fireteam detected — fireteam stats enabled.");
+                Plugin.LogSource.LogInfo("[LootNet] PIT Fireteam detected - fireteam stats enabled.");
                 return;
             }
 
-            Plugin.LogSource.LogInfo("[LootNet] PIT Fireteam not found — fireteam section disabled.");
+            Plugin.LogSource.LogInfo("[LootNet] PIT Fireteam not found - fireteam section disabled.");
         }
     }
 
@@ -303,7 +302,7 @@ namespace LootNet.Services
     // patched via raw Harmony in Plugin.cs so every Player subclass override is caught
     internal static class KillTracker
     {
-        // __0 is the second param by position — the name varies across EFT Player subclasses
+        // __0 is the second param by position - the name varies across EFT Player subclasses
         internal static void Postfix(Player __instance, IPlayer __0, DamageInfoStruct __1)
         {
             try

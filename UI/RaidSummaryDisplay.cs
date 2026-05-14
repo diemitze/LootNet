@@ -425,7 +425,7 @@ namespace LootNet.UI
             {
                 var (name, value) = stats.TopItems[i];
                 Color rarityColor = RarityColor(value);
-                string priceStr   = value > 0 ? $"₽{value:N0}" : "—";
+                string priceStr   = value > 0 ? $"₽{value:N0}" : "-";
                 string rarityHex  = ColorUtility.ToHtmlStringRGB(rarityColor);
 
                 if (i < _itemRows.Count)
@@ -458,7 +458,7 @@ namespace LootNet.UI
                 string killStr = kills == 1 ? "1 kill" : $"{kills} kills";
                 var row = _fireteamRows[i];
                 row.Label.text     = $"{name}  <color=#555555>{killStr}</color>";
-                row.RankBadge.text = kills > 0 ? $"×{kills}" : "—";
+                row.RankBadge.text = kills > 0 ? $"×{kills}" : "-";
                 row.RankBg.color   = new Color(accent.r * 0.4f, accent.g * 0.4f, accent.b * 0.4f, 1f);
                 row.AccentBar.color = accent;
                 row.Cg.alpha = 0f;
@@ -905,7 +905,7 @@ namespace LootNet.UI
             for (int i = 0; i < 7; i++)
                 BuildItemRow(i);
 
-            // Fireteam section — sits just above the bottom of the panel
+            // Fireteam section - sits just above the bottom of the panel
             float teamY = -(PanelH - 16f);
             _fireteamSection = MakeRect("TeamSection", panelGo.transform);
             var fsSectionRt = _fireteamSection.GetComponent<RectTransform>();
