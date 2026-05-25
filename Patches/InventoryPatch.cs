@@ -54,6 +54,7 @@ namespace LootNet.Patches
         private static void PatchPostfix()
         {
             if (!RaidTracker.IsInRaid) return;
+            if (!Plugin.ShowInRaidCounter.Value) return;
             LootValueDisplay.Instance.SetValue(RaidTracker.DisplayValue);
             LootValueDisplay.Instance.Show();
         }

@@ -21,6 +21,8 @@ namespace LootNet.Patches
             if (_fired) return;
             _fired = true;
 
+            // Keep SessionCounters polling for ~4s past raid end to capture the survival/extract bonus
+            RaidTracker.OpenExtraPollWindow(4f);
             var stats = RaidTracker.BuildPendingStats();
             RaidTracker.ResetAfterRaid();
             LootValueDisplay.Instance.DestroyClone();

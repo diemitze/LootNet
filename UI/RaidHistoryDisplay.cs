@@ -33,6 +33,7 @@ namespace LootNet.UI
         private ScrollRect        _scrollRect;
         private TextMeshProUGUI   _emptyLabel;
         private TextMeshProUGUI   _capLabel;
+        private TextMeshProUGUI   _subtitle;
         private bool              _visible;
 
         private const float DrawerW     = 420f;
@@ -123,6 +124,32 @@ namespace LootNet.UI
                 _emptyLabel.gameObject.SetActive(_cards.Count == 0);
             if (_capLabel != null)
                 _capLabel.gameObject.SetActive(_cards.Count >= RaidTracker.MaxHistory);
+
+            UpdateSubtitle();
+        }
+
+        private void UpdateSubtitle()
+        {
+            if (_subtitle == null) return;
+
+            var history = RaidTracker.RaidHistory;
+            RaidStats best = null;
+            for (int i = 0; i < history.Count; i++)
+                if (best == null || history[i].TotalFoundValue > best.TotalFoundValue) best = history[i];
+
+            if (best == null || best.TotalFoundValue <= 0)
+            {
+                _subtitle.text = "THIS SESSION  ·  CLICK OUTSIDE TO CLOSE";
+                return;
+            }
+
+            string goldHex = ColorUtility.ToHtmlStringRGB(Gold);
+            _subtitle.text =
+                $"<color=#{goldHex}>★ BEST</color>" +
+                $"<color=#555555>  ·  </color>" +
+                $"<color=#bbbbbb>{best.MapName.ToUpper()}</color>" +
+                $"<color=#555555>  ·  </color>" +
+                $"<color=#{goldHex}>₽ {best.TotalFoundValue:N0}</color>";
         }
 
         private GameObject BuildCard(RaidStats stats, int index)
@@ -286,6 +313,8 @@ namespace LootNet.UI
             sub.text             = "THIS SESSION  ·  CLICK OUTSIDE TO CLOSE";
             sub.color            = new Color(0.30f, 0.30f, 0.30f);
             sub.characterSpacing = 2f;
+            sub.richText         = true;
+            _subtitle            = sub;
             SetRect(sub.rectTransform,
                 anchorMin: new Vector2(0f, 1f), anchorMax: new Vector2(1f, 1f),
                 offsetMin: new Vector2(20f, -HeaderH + 2f), offsetMax: new Vector2(-16f, -HeaderH + 18f));
