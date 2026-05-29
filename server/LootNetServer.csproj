@@ -36,6 +36,7 @@
     <RemoveDir Directories="$(TempPackageDir)" />
     <MakeDir Directories="$(ModPackageDir)" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModPackageDir)" />
+    <Copy SourceFiles="$(ProjectDir)package.json" DestinationFolder="$(ModPackageDir)" />
     <ZipDirectory SourceDirectory="$(TempPackageDir)" DestinationFile="$(ProjectDir)$(ZipFileName)" Overwrite="true" />
     <RemoveDir Directories="$(TempPackageDir)" />
     <Message Text="--- Mod successfully packaged at: $(ProjectDir)$(ZipFileName) ---" Importance="high" />
