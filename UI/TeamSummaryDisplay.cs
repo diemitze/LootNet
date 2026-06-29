@@ -91,7 +91,6 @@ namespace LootNet.UI
 
         public void ShowForRaid(RaidStats localStats)
         {
-            Plugin.LogSource.LogInfo($"[LootNet] TeamPanel.ShowForRaid (visible={_visible}, teammates={TeamSummaryStore.Count}).");
             _localStats = localStats;
             if (_visible) { _lastVersion = -1; TeamSummaryStore.RequestRefresh(); return; }
 

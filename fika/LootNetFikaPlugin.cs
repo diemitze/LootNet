@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using BepInEx;
+using BepInEx.Bootstrap;
 using BepInEx.Logging;
 using Fika.Core.Main.Components;
 using Fika.Core.Main.GameMode;
@@ -15,13 +16,40 @@ using UnityEngine;
 
 namespace LootNet.Fika
 {
-
+    // Thin loader. This type is Fika-free on purpose: Mono resolves the types used in
+    // a class's *method signatures* at class-load time (unlike .NET Framework), so any
+    // Fika type here would make BepInEx's AddComponent throw a FileNotFoundException
+    // before Awake can run — even with a soft dependency. All Fika-touching code lives
+    // in FikaBridge, which is only loaded once we've confirmed Fika is installed.
     [BepInPlugin("com.20fpsguy.LootNet.fika", "LootNet.Fika", "1.0.7")]
-    [BepInDependency("com.fika.core")]
+    [BepInDependency("com.fika.core", BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency("com.20fpsguy.LootNet")]
     internal class LootNetFikaPlugin : BaseUnityPlugin
     {
+        private const string FikaGuid = "com.fika.core";
+
         internal static ManualLogSource Log;
+
+        protected void Awake()
+        {
+            Log = Logger;
+
+            if (!Chainloader.PluginInfos.ContainsKey(FikaGuid))
+            {
+                Log.LogInfo("Fika not installed");
+                return;
+            }
+
+            // Fika is present: loading FikaBridge resolves Fika.Core, which is safe now.
+            gameObject.AddComponent<FikaBridge>();
+        }
+    }
+
+    // Carries every Fika type reference. Only instantiated when Fika is confirmed
+    // present, so Mono never has to resolve Fika.Core when it isn't installed.
+    internal class FikaBridge : MonoBehaviour
+    {
+        private static ManualLogSource Log => LootNetFikaPlugin.Log;
 
         private static string _groupId;
         private static string _playerId;
@@ -40,7 +68,6 @@ namespace LootNet.Fika
 
         protected void Awake()
         {
-            Log = Logger;
             RaidTracker.OnLocalSummaryBuilt     += OnLocalSummaryBuilt;
             TeamSummaryStore.OnRefreshRequested += OnRefreshRequested;
 
@@ -51,9 +78,9 @@ namespace LootNet.Fika
             {
                 var harmony = new Harmony("com.20fpsguy.LootNet.fika");
                 harmony.Patch(AccessTools.Method(typeof(CoopGame), "Stop"),
-                    postfix: new HarmonyMethod(typeof(LootNetFikaPlugin), nameof(OnCoopGameStop)));
+                    postfix: new HarmonyMethod(typeof(FikaBridge), nameof(OnCoopGameStop)));
                 harmony.Patch(AccessTools.Method(typeof(CoopGame), "Extract"),
-                    postfix: new HarmonyMethod(typeof(LootNetFikaPlugin), nameof(OnCoopGameExtract)));
+                    postfix: new HarmonyMethod(typeof(FikaBridge), nameof(OnCoopGameExtract)));
             }
             catch (Exception ex) { Log.LogWarning($"Failed to hook CoopGame for extract relay: {ex.Message}"); }
 
@@ -84,7 +111,7 @@ namespace LootNet.Fika
                     _snapshotSubmitted = false;
                     if (ch.MyPlayer != null) _playerId = ch.MyPlayer.ProfileId;
                     if (string.IsNullOrEmpty(_playerId)) _playerId = RequestHandler.SessionId;
-                    Log.LogInfo($"[LootNet.Fika] Captured Fika raid group '{_groupId}' (me: {_playerId}).");
+                    Log.LogDebug($"[LootNet.Fika] Captured Fika raid group '{_groupId}' (me: {_playerId}).");
                 }
 
                 int others = Mathf.Max(0, ch.AmountOfHumans - 1);
@@ -93,7 +120,7 @@ namespace LootNet.Fika
                 if (!_isTeamRaid && ch.AmountOfHumans > 1)
                 {
                     _isTeamRaid = true;
-                    Log.LogInfo($"[LootNet.Fika] Coop raid detected ({ch.AmountOfHumans} humans).");
+                    Log.LogDebug($"[LootNet.Fika] Coop raid detected ({ch.AmountOfHumans} humans).");
                 }
 
                 if ((_nickname == "Teammate" || string.IsNullOrEmpty(_nickname)) && ch.MyPlayer != null)
@@ -131,7 +158,7 @@ namespace LootNet.Fika
 
                 _snapshotSubmitted = true;
                 var dto = TeamSummaryDto.From(stats, _playerId, _nickname);
-                Log.LogInfo($"[LootNet.Fika] Extract snapshot relayed (group {_groupId}, {_nickname}, ₽{stats.TotalFoundValue:N0}).");
+                Log.LogDebug($"[LootNet.Fika] Extract snapshot relayed (group {_groupId}, {_nickname}, ₽{stats.TotalFoundValue:N0}).");
                 _ = SubmitAsync(_groupId, _playerId, dto);
             }
             catch (Exception ex) { Log?.LogWarning($"Extract snapshot relay failed: {ex.Message}"); }
@@ -144,7 +171,7 @@ namespace LootNet.Fika
 
                 if (FikaBackendUtils.IsHeadless)
                 {
-                    Log.LogInfo("[LootNet.Fika] Headless host — skipping summary relay.");
+                    Log.LogDebug("[LootNet.Fika] Headless host — skipping summary relay.");
                     return;
                 }
 
@@ -153,7 +180,7 @@ namespace LootNet.Fika
 
                 if (!_isTeamRaid)
                 {
-                    Log.LogInfo("[LootNet.Fika] Solo raid — summary not relayed.");
+                    Log.LogDebug("[LootNet.Fika] Solo raid — summary not relayed.");
                     return;
                 }
 
@@ -164,7 +191,7 @@ namespace LootNet.Fika
                 }
 
                 var dto = TeamSummaryDto.From(stats, _playerId, _nickname);
-                Log.LogInfo($"[LootNet.Fika] Submitting summary (group {_groupId}, {_nickname}, ₽{stats.TotalFoundValue:N0}).");
+                Log.LogDebug($"[LootNet.Fika] Submitting summary (group {_groupId}, {_nickname}, ₽{stats.TotalFoundValue:N0}).");
                 _ = SubmitAsync(_groupId, _playerId, dto);
             }
             catch (Exception ex) { Log.LogError($"Summary submit prep failed: {ex}"); }
@@ -177,7 +204,6 @@ namespace LootNet.Fika
                 Log.LogWarning("[LootNet.Fika] Refresh requested but no group id captured.");
                 return;
             }
-            Log.LogDebug($"[LootNet.Fika] Refresh requested — fetching summaries for group {_groupId}.");
             _ = FetchAsync(_groupId);
         }
 
@@ -192,7 +218,6 @@ namespace LootNet.Fika
                     Payload  = JsonConvert.SerializeObject(dto),
                 });
                 await RequestHandler.PostJsonAsync(SubmitPath, body);
-                Log?.LogDebug("[LootNet.Fika] Summary submitted to server.");
             }
             catch (Exception ex) { Log?.LogWarning($"Summary submit failed: {ex.Message}"); }
         }
@@ -226,7 +251,6 @@ namespace LootNet.Fika
                     TeamSummaryStore.Submit(key, dto.ToStats());
                     added++;
                 }
-                if (added > 0) Log?.LogDebug($"[LootNet.Fika] Fetched {added} teammate summary(ies) for group {groupId}.");
             }
             catch (Exception ex) { Log?.LogWarning($"Summary fetch failed: {ex.Message}"); }
         }

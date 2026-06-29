@@ -35,8 +35,6 @@ namespace LootNet.Patches
             bool teamRaid = RaidTracker.IsTeamRaid?.Invoke() == true;
             if (teamRaid)
             {
-                Plugin.LogSource.LogInfo("[LootNet] Coop raid -> opening team summary panel directly.");
-
                 TeamSummaryDisplay.Instance.ShowForRaid(stats);
                 TeamSummaryDisplay.Instance.OnClosed += () =>
                 {
