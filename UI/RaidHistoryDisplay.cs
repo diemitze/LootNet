@@ -52,8 +52,6 @@ namespace LootNet.UI
             BuildUI();
         }
 
-        // ── Show / Hide ──────────────────────────────────────────────────────────
-
         public void Show()
         {
             if (_visible) return;
@@ -106,8 +104,6 @@ namespace LootNet.UI
         }
 
         private static float Ease(float t) => t < 0.5f ? 2f * t * t : 1f - 2f * (1f - t) * (1f - t);
-
-        // ── Cards ────────────────────────────────────────────────────────────────
 
         private void RebuildCards()
         {
@@ -162,11 +158,9 @@ namespace LootNet.UI
             rt.anchoredPosition = new Vector2(0f, -index * (CardH + CardSpacing));
             rt.sizeDelta        = new Vector2(0f, CardH);
 
-            // Card background
             var bg = card.AddComponent<Image>();
             bg.color = new Color(0.08f, 0.08f, 0.11f, 1f);
 
-            // Bottom separator
             var sep   = MakeRect("Sep", card.transform);
             var sepRt = sep.GetComponent<RectTransform>();
             sepRt.anchorMin = new Vector2(0.03f, 0f);
@@ -175,7 +169,6 @@ namespace LootNet.UI
             sepRt.sizeDelta = new Vector2(0f, 1f);
             sep.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.05f);
 
-            // Left accent bar - coloured by value tier
             Color accentCol = ValueColor(stats.TotalFoundValue);
             var accent   = MakeRect("Accent", card.transform);
             var accentRt = accent.GetComponent<RectTransform>();
@@ -188,9 +181,6 @@ namespace LootNet.UI
             const float PadL = 16f;
             const float PadR = 14f;
 
-            // ── Left column ──────────────────────────────────────────────────────
-
-            // Map name
             var mapLbl = MakeTMP("Map", card.transform, 17f, FontStyles.Bold, TextAlignmentOptions.Left);
             mapLbl.text  = stats.MapName.ToUpper();
             mapLbl.color = Color.white;
@@ -198,7 +188,6 @@ namespace LootNet.UI
                 anchorMin: new Vector2(0f, 0.46f), anchorMax: new Vector2(0.58f, 1f),
                 offsetMin: new Vector2(PadL, 0f),  offsetMax: new Vector2(0f, -8f));
 
-            // Type badge + relative time
             string raidType = stats.IsScavRaid ? "SCAV" : "PMC";
             Color  typeCol  = stats.IsScavRaid
                 ? new Color(0.80f, 0.62f, 0.30f)
@@ -211,9 +200,6 @@ namespace LootNet.UI
                 anchorMin: new Vector2(0f, 0f),    anchorMax: new Vector2(0.58f, 0.48f),
                 offsetMin: new Vector2(PadL, 6f),  offsetMax: new Vector2(0f, 0f));
 
-            // ── Right column ─────────────────────────────────────────────────────
-
-            // Loot value
             var valLbl = MakeTMP("Value", card.transform, 18f, FontStyles.Bold, TextAlignmentOptions.Right);
             valLbl.text  = $"₽ {stats.TotalFoundValue:N0}";
             valLbl.color = accentCol;
@@ -221,7 +207,6 @@ namespace LootNet.UI
                 anchorMin: new Vector2(0.42f, 0.46f), anchorMax: new Vector2(1f, 1f),
                 offsetMin: new Vector2(0f, 0f),       offsetMax: new Vector2(-PadR, -8f));
 
-            // Kill summary
             var killLbl = MakeTMP("Kills", card.transform, 10f, FontStyles.Normal, TextAlignmentOptions.Right);
             killLbl.text  = BuildKillString(stats);
             killLbl.color = new Color(0.45f, 0.45f, 0.45f);
@@ -246,8 +231,6 @@ namespace LootNet.UI
             return parts.Count > 0 ? string.Join("  ·  ", parts) : "No kills";
         }
 
-        // ── UI construction ──────────────────────────────────────────────────────
-
         private void BuildUI()
         {
             var canvas = gameObject.GetComponent<Canvas>() ?? gameObject.AddComponent<Canvas>();
@@ -260,7 +243,6 @@ namespace LootNet.UI
             _root = MakeRect("HistoryRoot", transform);
             Stretch(_root.GetComponent<RectTransform>());
 
-            // Semi-transparent overlay - click to close
             var overlay = MakeRect("Overlay", _root.transform);
             Stretch(overlay.GetComponent<RectTransform>());
             overlay.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
@@ -268,7 +250,6 @@ namespace LootNet.UI
             overlayBtn.transition = Selectable.Transition.None;
             overlayBtn.onClick.AddListener(Hide);
 
-            // Drawer - anchored to right edge, slides in/out on X
             var drawerGo = MakeRect("Drawer", _root.transform);
             _drawerRt            = drawerGo.GetComponent<RectTransform>();
             _drawerRt.anchorMin  = new Vector2(1f, 0f);
@@ -277,11 +258,9 @@ namespace LootNet.UI
             _drawerRt.sizeDelta  = new Vector2(DrawerW, 0f);
             _drawerRt.anchoredPosition = new Vector2(DrawerW, 0f);
 
-            // Drawer background - block raycasts so overlay click-close doesn't fire through
             var drawerBg = drawerGo.AddComponent<Image>();
             drawerBg.color = new Color(0.06f, 0.06f, 0.09f, 1f);
 
-            // Gold left border
             var border   = MakeRect("Border", drawerGo.transform);
             var borderRt = border.GetComponent<RectTransform>();
             borderRt.anchorMin = Vector2.zero;
@@ -290,7 +269,6 @@ namespace LootNet.UI
             borderRt.sizeDelta = new Vector2(3f, 0f);
             border.AddComponent<Image>().color = Gold;
 
-            // Gold top bar
             var topBar   = MakeRect("TopBar", drawerGo.transform);
             var topBarRt = topBar.GetComponent<RectTransform>();
             topBarRt.anchorMin = new Vector2(0f, 1f);
@@ -299,7 +277,6 @@ namespace LootNet.UI
             topBarRt.sizeDelta = new Vector2(0f, 3f);
             topBar.AddComponent<Image>().color = Gold;
 
-            // Header title
             var title = MakeTMP("Title", drawerGo.transform, 22f, FontStyles.Bold, TextAlignmentOptions.Left);
             title.text             = "RAID HISTORY";
             title.color            = Gold;
@@ -308,7 +285,6 @@ namespace LootNet.UI
                 anchorMin: new Vector2(0f, 1f), anchorMax: new Vector2(1f, 1f),
                 offsetMin: new Vector2(20f, -HeaderH + 12f), offsetMax: new Vector2(-16f, -12f));
 
-            // Subtitle
             var sub = MakeTMP("Sub", drawerGo.transform, 10f, FontStyles.Normal, TextAlignmentOptions.Left);
             sub.text             = "THIS SESSION  ·  CLICK OUTSIDE TO CLOSE";
             sub.color            = new Color(0.30f, 0.30f, 0.30f);
@@ -319,7 +295,6 @@ namespace LootNet.UI
                 anchorMin: new Vector2(0f, 1f), anchorMax: new Vector2(1f, 1f),
                 offsetMin: new Vector2(20f, -HeaderH + 2f), offsetMax: new Vector2(-16f, -HeaderH + 18f));
 
-            // Divider under header
             var div   = MakeRect("Divider", drawerGo.transform);
             var divRt = div.GetComponent<RectTransform>();
             divRt.anchorMin        = new Vector2(0f, 1f);
@@ -329,7 +304,6 @@ namespace LootNet.UI
             divRt.sizeDelta        = new Vector2(0f, 1f);
             div.AddComponent<Image>().color = new Color(0.38f, 0.70f, 1.00f, 0.20f);
 
-            // Scroll area
             var scrollGo = MakeRect("Scroll", drawerGo.transform);
             var scrollRt = scrollGo.GetComponent<RectTransform>();
             scrollRt.anchorMin = Vector2.zero;
@@ -355,7 +329,6 @@ namespace LootNet.UI
             _scrollRect.content   = _contentRt;
             _cardContainer        = contentGo.transform;
 
-            // Empty-state message shown when no raids have been played yet
             _emptyLabel = MakeTMP("EmptyLabel", drawerGo.transform, 13f, FontStyles.Normal, TextAlignmentOptions.Center);
             _emptyLabel.text  = "No raids recorded yet.\nComplete a raid to see your history.";
             _emptyLabel.color = new Color(0.35f, 0.35f, 0.35f);
@@ -365,7 +338,6 @@ namespace LootNet.UI
                 offsetMin: new Vector2(24f, 0f),  offsetMax: new Vector2(-24f, 0f));
             _emptyLabel.gameObject.SetActive(false);
 
-            // Cap notice shown at the bottom of the list when history is full
             _capLabel = MakeTMP("CapLabel", drawerGo.transform, 10f, FontStyles.Normal, TextAlignmentOptions.Center);
             _capLabel.text  = $"Showing last {RaidTracker.MaxHistory} raids  ·  oldest entries are dropped";
             _capLabel.color = new Color(0.28f, 0.28f, 0.28f);
@@ -377,8 +349,6 @@ namespace LootNet.UI
             _canvasGroup.alpha = 0f;
             _root.SetActive(false);
         }
-
-        // ── Helpers ──────────────────────────────────────────────────────────────
 
         private static void SetRect(RectTransform rt,
             Vector2 anchorMin, Vector2 anchorMax,

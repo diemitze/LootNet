@@ -49,7 +49,6 @@ namespace LootNet.UI
         private TextMeshProUGUI     _valueText;
         private Color               _titleColor = new Color(1f, 0.84f, 0f);
 
-        // Left-column stat labels (show final value) and counter labels (count up)
         private TextMeshProUGUI     _statItemsNum;
         private TextMeshProUGUI     _statPmcNum;
         private TextMeshProUGUI     _statScavNum;
@@ -70,7 +69,6 @@ namespace LootNet.UI
         private Transform           _fireteamContainer;
         private Texture2D           _vignetteTexture;
 
-        // Column divider that draws itself downward
         private RectTransform       _colDivider;
 
         private GameObject          _videoPanel;
@@ -99,7 +97,6 @@ namespace LootNet.UI
             public Image            AccentBar;
         }
 
-
         private void Awake()
         {
             if (_instance != null && _instance != this) { Destroy(gameObject); return; }
@@ -123,7 +120,6 @@ namespace LootNet.UI
             }
             if (_timer <= 0f) Hide();
         }
-
 
         public void QueueSummary(RaidStats stats)
         {
@@ -174,7 +170,6 @@ namespace LootNet.UI
             OnHidden = null;
         }
 
-
         private IEnumerator AnimateIn(RaidStats stats)
         {
             ResetUI(stats);
@@ -190,7 +185,6 @@ namespace LootNet.UI
             if (died) PlaySound("PlayerIsDead", "ErrorMessage");
             else      PlaySound("BackpackOpen");
 
-            // Fade panel in
             float t = 0f;
             while (t < FadeInDuration)
             {
@@ -200,7 +194,6 @@ namespace LootNet.UI
             }
             _canvasGroup.alpha = 1f;
 
-            // Panel slides up slightly
             if (_panel != null)
             {
                 var startPos = _panel.anchoredPosition + new Vector2(0f, -40f);
@@ -232,28 +225,23 @@ namespace LootNet.UI
 
             yield return new WaitForSeconds(0.1f);
 
-            // Column divider draws down
             StartCoroutine(DrawDivider(0.45f));
 
-            // Value text appears
             Color valueColor = ValueColor(stats.TotalFoundValue);
             _valueText.color = new Color(valueColor.r, valueColor.g, valueColor.b, 0f);
             yield return StartCoroutine(FadeText(_valueText, new Color(valueColor.r, valueColor.g, valueColor.b), 0.2f));
             _valueText.text = "₽ 0";
 
-            // Stat rows slide in and count up
             StartCoroutine(SlideInStatRow(_statItemsCg, _statItemsNum, stats.ItemsFound, 0.05f, 0.5f, 1.2f));
             StartCoroutine(SlideInStatRow(_statPmcCg,   _statPmcNum,   stats.PmcKills,  0.30f, 0.5f, 0.9f));
             StartCoroutine(SlideInStatRow(_statScavCg,  _statScavNum,  stats.ScavKills, 0.55f, 0.5f, 0.7f));
             StartCoroutine(FadeInXpLine(stats.XpEarned, 0.40f, 1.4f));
             StartCoroutine(WatchForXpBonus(stats));
 
-            // Prepare item rows
             int rowCount = Mathf.Min(stats.TopItems.Count, 7);
             EnsureItemRows(rowCount);
             PrepareItemRows(stats);
 
-            // Reveal rows with stagger; value counter increments per row (+200ms after each slide starts)
             double runningVal  = 0;
             double totalVal    = stats.TotalFoundValue;
             Color  vc          = ValueColor(totalVal);
@@ -268,7 +256,6 @@ namespace LootNet.UI
 
                 RevealRow(idx, itemVal);
 
-                // Increment the total value counter 200ms after this row starts sliding
                 StartCoroutine(BumpValue(targetVal, totalVal, vc, 0.20f, isLast));
 
                 yield return new WaitForSeconds(StaggerDelay);
@@ -394,7 +381,6 @@ namespace LootNet.UI
             yield return new WaitForSeconds(delay);
             if (_xpLineCg == null || _xpAmountText == null) yield break;
 
-            // hide entirely if no XP gained
             if (target <= 0)
             {
                 _xpLineCg.alpha = 0f;
@@ -446,7 +432,6 @@ namespace LootNet.UI
             }
             cg.alpha = 1f;
 
-            // Count up
             t = 0f;
             while (t < countDur)
             {
@@ -528,7 +513,7 @@ namespace LootNet.UI
                 r.Cg.alpha = 0f;
                 r.Rt.anchoredPosition = new Vector2(-SlideDistance, r.Rt.anchoredPosition.y);
             }
-            // Cards slide up from below: offset Y down, keep X (set by PrepareFireteamRows)
+
             foreach (var r in _fireteamRows)
             {
                 r.Cg.alpha = 0f;
@@ -571,7 +556,6 @@ namespace LootNet.UI
         {
             int count = Mathf.Min(members.Count, 4);
 
-            // Layout cards horizontally: divide container width evenly with 8px gap
             const float gap = 8f;
             var containerRt = _fireteamContainer as RectTransform;
             float containerW = containerRt != null ? containerRt.rect.width : 480f;
@@ -601,7 +585,6 @@ namespace LootNet.UI
             }
         }
 
-        // Card layout: accent stripe on the left, bot name on top, kill count below
         private void BuildFireteamRow(int index)
         {
             var row = MakeRect($"TeamCard{index}", _fireteamContainer);
@@ -824,7 +807,6 @@ namespace LootNet.UI
             catch { }
         }
 
-
         private void BuildVideoPanel()
         {
             var vpGo = new GameObject("VideoPlayerHost");
@@ -909,7 +891,6 @@ namespace LootNet.UI
             if (_vignetteTexture    != null) Destroy(_vignetteTexture);
         }
 
-
         private void BuildUI()
         {
             var canvas = gameObject.GetComponent<Canvas>() ?? gameObject.AddComponent<Canvas>();
@@ -922,18 +903,15 @@ namespace LootNet.UI
             _root = MakeRect("SummaryRoot", transform);
             Stretch(_root.GetComponent<RectTransform>());
 
-            // Background screenshot
             var screenshotGo = MakeRect("Screenshot", _root.transform);
             Stretch(screenshotGo.GetComponent<RectTransform>());
             _bgImage = screenshotGo.AddComponent<RawImage>();
             _bgImage.color = new Color(1f, 1f, 1f, 0.35f);
 
-            // Dark overlay
             var overlay = MakeRect("Overlay", _root.transform);
             Stretch(overlay.GetComponent<RectTransform>());
             overlay.AddComponent<Image>().color = new Color(0.01f, 0.01f, 0.03f, 0.82f);
 
-            // Vignette
             _vignetteTexture = BuildVignetteTexture();
             var vigGo = MakeRect("Vignette", _root.transform);
             Stretch(vigGo.GetComponent<RectTransform>());
@@ -941,7 +919,6 @@ namespace LootNet.UI
             vigImg.texture = _vignetteTexture;
             vigImg.color   = new Color(1f, 1f, 1f, 0.9f);
 
-            // Scan line
             var scanGo = MakeRect("ScanLine", _root.transform);
             var scanRt = scanGo.GetComponent<RectTransform>();
             scanRt.anchorMin = new Vector2(0f, 1f); scanRt.anchorMax = new Vector2(1f, 1f);
@@ -949,7 +926,6 @@ namespace LootNet.UI
             _scanLine = scanGo.AddComponent<Image>();
             _scanLine.color = Color.clear;
 
-            // Click-to-dismiss
             var clickGo = MakeRect("ClickCatcher", _root.transform);
             Stretch(clickGo.GetComponent<RectTransform>());
             clickGo.AddComponent<Image>().color = Color.clear;
@@ -957,11 +933,9 @@ namespace LootNet.UI
             btn.transition = Selectable.Transition.None;
             btn.onClick.AddListener(Hide);
 
-            // Gold accent bars
             MakeAccentBar("TopAccent", _root.transform, new Vector2(0f, 1f), new Vector2(1f, 1f), 4f, new Color(1f, 0.84f, 0f, 1f));
             MakeAccentBar("BotAccent", _root.transform, new Vector2(0f, 0f), new Vector2(1f, 0f), 2f, new Color(1f, 0.84f, 0f, 0.35f));
 
-            // ── Main panel (wide) ──
             const float PanelW  = 1160f;
             const float PanelH  = 700f;
 
@@ -974,7 +948,6 @@ namespace LootNet.UI
 
             panelGo.AddComponent<Image>().color = new Color(0.04f, 0.04f, 0.07f, 0.92f);
 
-            // Left gold stripe
             var stripe   = MakeRect("LeftStripe", panelGo.transform);
             var stripeRt = stripe.GetComponent<RectTransform>();
             stripeRt.anchorMin = Vector2.zero; stripeRt.anchorMax = new Vector2(0f, 1f);
@@ -982,7 +955,6 @@ namespace LootNet.UI
             stripeRt.anchoredPosition = Vector2.zero; stripeRt.sizeDelta = new Vector2(4f, 0f);
             stripe.AddComponent<Image>().color = new Color(1f, 0.84f, 0f, 1f);
 
-            // ── Header (full width) ──
             const float HeaderH = 140f;
 
             _titleText = MakeTMP("Title", panelGo.transform, 52f, FontStyles.Bold, TextAlignmentOptions.Center);
@@ -995,25 +967,21 @@ namespace LootNet.UI
             _subtitleText.characterSpacing = 5f;
             PlaceLabel(_subtitleText.rectTransform, -98f, 22f);
 
-            // Header rule
             AddHRule(panelGo.transform, -HeaderH, new Color(1f, 0.84f, 0f, 0.3f));
 
-            // ── Column divider (draws downward) ──
             var divGo = MakeRect("ColDivider", panelGo.transform);
             _colDivider = divGo.GetComponent<RectTransform>();
             _colDivider.anchorMin = new Vector2(0.5f, 0f);
-            _colDivider.anchorMax = new Vector2(0.5f, 1f); // starts full height; DrawDivider shrinks anchorMax.y from 1→0
+            _colDivider.anchorMax = new Vector2(0.5f, 1f);
             _colDivider.pivot     = new Vector2(0.5f, 1f);
             _colDivider.offsetMin = new Vector2(-1f, 0f);
             _colDivider.offsetMax = new Vector2( 1f, -HeaderH);
             divGo.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.07f);
             divGo.SetActive(false);
 
-            // ── LEFT COLUMN ──
             const float ColPad = 48f;
             const float BodyTop = -HeaderH - 8f;
 
-            // Value label
             _valueText = MakeTMP("Value", panelGo.transform, 72f, FontStyles.Bold, TextAlignmentOptions.Left);
             _valueText.color = Color.clear;
             var vrt = _valueText.rectTransform;
@@ -1022,7 +990,6 @@ namespace LootNet.UI
             vrt.anchoredPosition = new Vector2(ColPad, BodyTop - 20f);
             vrt.sizeDelta = new Vector2(-ColPad, 90f);
 
-            // Pulse ring behind value
             var ringGo = MakeRect("PulseRing", panelGo.transform);
             var ringRt = ringGo.GetComponent<RectTransform>();
             ringRt.anchorMin = new Vector2(0f, 1f); ringRt.anchorMax = new Vector2(0.5f, 1f);
@@ -1033,7 +1000,6 @@ namespace LootNet.UI
             _valuePulseRing.color = Color.clear;
             ringGo.SetActive(false);
 
-            // Value sublabel
             var valLabel = MakeTMP("ValueLabel", panelGo.transform, 10f, FontStyles.Normal, TextAlignmentOptions.Left);
             valLabel.text  = "TOTAL VALUE EXTRACTED";
             valLabel.color = new Color(0.3f, 0.3f, 0.3f, 1f);
@@ -1049,7 +1015,6 @@ namespace LootNet.UI
             BuildStatRow(panelGo.transform, "PMC kills",    new Color(1f, 0.27f, 0.27f),       ColPad, statY - 64f,   out _statPmcNum,   out _statPmcCg,   new Color(1f, 0.27f, 0.27f));
             BuildStatRow(panelGo.transform, "scav kills",   new Color(0.55f, 0.55f, 0.55f),    ColPad, statY - 128f,  out _statScavNum,  out _statScavCg,  new Color(0.55f, 0.55f, 0.55f));
 
-            // XP line sits under the ruble value. Layout group + size fitter keeps the label tight to the number.
             var xpLineGo = MakeRect("XpLine", panelGo.transform);
             var xpLineRt = xpLineGo.GetComponent<RectTransform>();
             xpLineRt.anchorMin = new Vector2(0f, 1f); xpLineRt.anchorMax = new Vector2(0.5f, 1f);
@@ -1083,7 +1048,6 @@ namespace LootNet.UI
             xlFitter.horizontalFit = UnityEngine.UI.ContentSizeFitter.FitMode.PreferredSize;
             xlFitter.verticalFit   = UnityEngine.UI.ContentSizeFitter.FitMode.PreferredSize;
 
-            // Bonus sub-label revealed once the survival/extract bonus is detected
             var xpBonusGo = MakeRect("XpBonus", panelGo.transform);
             var xpBonusRt = xpBonusGo.GetComponent<RectTransform>();
             xpBonusRt.anchorMin = new Vector2(0f, 1f); xpBonusRt.anchorMax = new Vector2(0.5f, 1f);
@@ -1099,7 +1063,6 @@ namespace LootNet.UI
             _xpBonusText.enableWordWrapping = false;
             Stretch(_xpBonusText.rectTransform);
 
-            // ── RIGHT COLUMN ──
             var hdr = MakeTMP("TopFindsHeader", panelGo.transform, 11f, FontStyles.Bold, TextAlignmentOptions.Center);
             hdr.text = "TOP FINDS";
             hdr.color = new Color(0.35f, 0.35f, 0.35f, 1f);
@@ -1121,8 +1084,7 @@ namespace LootNet.UI
             for (int i = 0; i < 7; i++)
                 BuildItemRow(i);
 
-            // Fireteam section - sits in the LEFT column below the stat rows as horizontal cards
-            float teamY = statY - 128f - 60f - 28f;  // below scav row with breathing room
+            float teamY = statY - 128f - 60f - 28f;
             _fireteamSection = MakeRect("TeamSection", panelGo.transform);
             var fsSectionRt = _fireteamSection.GetComponent<RectTransform>();
             fsSectionRt.anchorMin = new Vector2(0f, 1f); fsSectionRt.anchorMax = new Vector2(0.5f, 1f);
@@ -1147,7 +1109,6 @@ namespace LootNet.UI
             _fireteamContainer = tcTeamGo.transform;
             _fireteamSection.SetActive(false);
 
-            // Progress bar
             var progTrack = MakeRect("ProgressTrack", panelGo.transform);
             var ptRt = progTrack.GetComponent<RectTransform>();
             ptRt.anchorMin = new Vector2(0f, 0f); ptRt.anchorMax = new Vector2(1f, 0f);
@@ -1162,7 +1123,6 @@ namespace LootNet.UI
             _progressBarFill.pivot = new Vector2(0f, 0.5f);
             progFillGo.AddComponent<Image>().color = new Color(1f, 0.84f, 0f, 0.65f);
 
-            // Dismiss text
             _dismissText = MakeTMP("Dismiss", _root.transform, 12f, FontStyles.Normal, TextAlignmentOptions.Center);
             _dismissText.color = new Color(0.4f, 0.4f, 0.4f, 0f);
             var dr = _dismissText.rectTransform;
@@ -1189,7 +1149,6 @@ namespace LootNet.UI
             cg = rowGo.AddComponent<CanvasGroup>();
             cg.alpha = 0f;
 
-            // Accent bar
             var accentGo = MakeRect("Accent", rowGo.transform);
             var accentRt = accentGo.GetComponent<RectTransform>();
             accentRt.anchorMin = Vector2.zero; accentRt.anchorMax = new Vector2(0f, 1f);
@@ -1197,7 +1156,6 @@ namespace LootNet.UI
             accentRt.anchoredPosition = Vector2.zero; accentRt.sizeDelta = new Vector2(3f, 0f);
             accentGo.AddComponent<Image>().color = accentColor;
 
-            // Number
             numLabel = MakeTMP($"Num_{label}", rowGo.transform, 28f, FontStyles.Bold, TextAlignmentOptions.Left);
             numLabel.color = numColor;
             var nRt = numLabel.rectTransform;
@@ -1206,7 +1164,6 @@ namespace LootNet.UI
             nRt.anchoredPosition = new Vector2(10f, 0f);
             nRt.sizeDelta = new Vector2(56f, 0f);
 
-            // Label text
             var txt = MakeTMP($"Lbl_{label}", rowGo.transform, 14f, FontStyles.Normal, TextAlignmentOptions.Left);
             txt.text  = label;
             txt.color = new Color(0.6f, 0.6f, 0.6f, 1f);
@@ -1271,7 +1228,6 @@ namespace LootNet.UI
             while (_itemRows.Count < count)
                 BuildItemRow(_itemRows.Count);
         }
-
 
         private static void MakeAccentBar(string name, Transform parent, Vector2 anchorMin, Vector2 anchorMax, float h, Color color)
         {

@@ -24,8 +24,9 @@ namespace LootNet.Services
         public DateTime RaidTime;
         public bool IsScavRaid;
         public bool PlayerSurvived = true;
-        public int XpEarned;       // base XP from kills/loot/healing/exploration
-        public int XpBonus;        // survival/extract bonus, queried separately
+        public int XpEarned;
+        public int XpBonus;
+        public string PlayerName;
     }
 
     public class RaidTracker : MonoBehaviour
@@ -37,23 +38,29 @@ namespace LootNet.Services
         public static bool IsInRaid   { get; private set; }
         public static bool PlayerDied { get; private set; }
         public static int  LatestSessionXp => _latestSessionXp;
-        // Polling stays active for a few seconds past raid end to capture the post-extract bonus
+
         public static bool ExtraPollWindow { get; private set; }
 
         public static readonly List<RaidStats> RaidHistory = new();
         internal const int MaxHistory = 15;
 
+        public static event Action<RaidStats> OnLocalSummaryBuilt;
+
+        public static Func<bool> IsTeamRaid;
+
+        public static Func<int> ExpectedTeammates;
+
         private static readonly Dictionary<string, (string Name, string TemplateId, double Value)> _foundItems = new();
         private static readonly Dictionary<string, (string Name, int Kills)> _botKills = new();
-        private static readonly HashSet<string> _recentKillIds = new(); // base + override both fire; deduplicate by profileId
-        private static readonly HashSet<string> _confirmedFollowerIds = new(); // captured at kill time - PIT unregisters followers when they die
+        private static readonly HashSet<string> _recentKillIds = new();
+        private static readonly HashSet<string> _confirmedFollowerIds = new();
         private static int _pmcKills;
         private static int _scavKills;
         private static string _pendingMapName;
         private static DateTime _pendingRaidTime;
         private static int _pendingStartXp;
         private static int _latestSessionXp;
-        // Profile ref captured at raid start; outlives MainPlayer being nulled at extract
+
         private static object _cachedProfileForPolling;
 
         private static bool _pitResolved;
@@ -72,7 +79,6 @@ namespace LootNet.Services
 
         private void Awake() => Instance = this;
 
-        // Hosted on Plugin (persistent) since the RaidTracker GO gets disabled on scene change
         public static System.Collections.IEnumerator PollLoop()
         {
             while (true)
@@ -105,7 +111,7 @@ namespace LootNet.Services
             _pmcKills  = 0;
             _scavKills = 0;
             PlayerDied = false;
-            // _latestSessionXp is intentionally not cleared here; OnRaidEntered resets it at next raid start
+
         }
 
         public static void MarkPlayerDied() => PlayerDied = true;
@@ -115,6 +121,7 @@ namespace LootNet.Services
             if (player == null) return;
 
             ClearRaidState();
+            TeamSummaryStore.Clear();
             _latestSessionXp = 0;
             _cachedProfileForPolling = player.Profile;
             IsScavRaid      = player.Side == EPlayerSide.Savage;
@@ -123,15 +130,14 @@ namespace LootNet.Services
             _pendingRaidTime = DateTime.Now;
             _pendingStartXp = TryReadExperience(player);
 
-            // Warm the SessionCounters reflection cache before the first kill fires
             TryReadSessionXp(player);
-            ResolvePit(); // needs to be ready before the first kill fires
+            ResolvePit();
 
             var spawnSlots = EPlayerItems.InRaidItems;
 
             if (IsScavRaid)
             {
-                // scav gear counts from spawn, not just stuff picked up during the raid
+
                 foreach (var item in player.Inventory.GetPlayerItems(spawnSlots))
                     foreach (var child in item.GetAllItems())
                         TrackItemAdded(child);
@@ -184,7 +190,6 @@ namespace LootNet.Services
                 if (tmpl == null) return true;
                 var tmplType = tmpl.GetType();
 
-                // CanSellOnRagfair lives on the template (sometimes on a Props sub-object)
                 var canField = tmplType.GetField("CanSellOnRagfair");
                 if (canField?.GetValue(tmpl) is bool cs) return cs;
 
@@ -235,7 +240,6 @@ namespace LootNet.Services
             _botKills.TryGetValue(id, out var existing);
             _botKills[id] = (name, existing.Kills + 1);
 
-            // check PIT now while the follower is still registered; dead followers get unregistered before raid-end
             if (_isFollower != null && !_confirmedFollowerIds.Contains(id))
             {
                 try { if (_isFollower(id)) _confirmedFollowerIds.Add(id); }
@@ -243,7 +247,7 @@ namespace LootNet.Services
             }
         }
 
-        public static RaidStats BuildPendingStats()
+        public static RaidStats ComputeStats()
         {
             bool hasLoot  = _foundItems.Count > 0;
             bool hasKills = _pmcKills > 0 || _scavKills > 0;
@@ -259,7 +263,7 @@ namespace LootNet.Services
             }
 
             int xpEarned = ComputeXpEarned();
-            // always show the summary on death; otherwise require loot, kills, or XP
+
             if (!hasLoot && !hasKills && xpEarned <= 0 && survived) return null;
 
             var allFound = _foundItems.Values.Where(x => x.Value > 0).ToList();
@@ -280,7 +284,7 @@ namespace LootNet.Services
             int baseXp = xpEarned - bonus;
             if (baseXp < 0) baseXp = xpEarned;
 
-            var stats = new RaidStats
+            return new RaidStats
             {
                 ItemsFound      = allFound.Count,
                 TotalFoundValue = allFound.Sum(x => x.Value),
@@ -295,12 +299,21 @@ namespace LootNet.Services
                 XpEarned        = baseXp,
                 XpBonus         = bonus,
             };
+        }
+
+        public static RaidStats BuildPendingStats()
+        {
+            var stats = ComputeStats();
+            if (stats == null) return null;
 
             if (RaidHistory.Count >= MaxHistory) RaidHistory.RemoveAt(0);
             RaidHistory.Add(stats);
 
             if (Plugin.PersistRaidHistory != null && Plugin.PersistRaidHistory.Value)
                 SavePersistedHistory();
+
+            try { OnLocalSummaryBuilt?.Invoke(stats); }
+            catch (Exception ex) { Plugin.LogSource.LogWarning($"[LootNet] OnLocalSummaryBuilt threw: {ex.Message}"); }
 
             return stats;
         }
@@ -384,7 +397,6 @@ namespace LootNet.Services
                 var gw = Singleton<GameWorld>.Instance;
                 if (gw == null) return "Unknown";
 
-                // Try common property/field names for the location ID
                 foreach (var name in new[] { "LocationId", "Location_0", "_locationId", "location" })
                 {
                     var prop = typeof(GameWorld).GetProperty(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
@@ -401,7 +413,6 @@ namespace LootNet.Services
             catch { return "Unknown"; }
         }
 
-        // Baseline profile XP captured at raid start for profile-delta fallback
         private static int TryReadExperience(Player player)
         {
             try
@@ -425,7 +436,6 @@ namespace LootNet.Services
             return 0;
         }
 
-        // Session XP via Profile.EftStats.SessionCounters; lazy reflection cache populated on first read
         private static object _cachedSessionCounters;
         private static System.Reflection.MethodInfo _cachedGetAllInt;
         private static object _cachedExpTag;
@@ -434,7 +444,6 @@ namespace LootNet.Services
         private static int TryReadSessionXp(Player player)
             => TryReadSessionXpFromProfile(player?.Profile);
 
-        // Sums SessionCounters entries matching a single CounterTag (e.g. "ExpExitStatus" for survival bonus only)
         public static int TryReadCounterTag(string tagName)
         {
             try
@@ -696,7 +705,7 @@ namespace LootNet.Services
         private static string FormatMapName(string raw)
         {
             if (_mapNames.TryGetValue(raw, out var friendly)) return friendly;
-            // Titlecase the raw string as fallback
+
             return System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(raw.ToLower());
         }
 
@@ -739,7 +748,6 @@ namespace LootNet.Services
         }
     }
 
-    // patched via raw Harmony in Plugin.cs so every Player subclass override is caught
     internal static class DeathTracker
     {
         internal static void Postfix(Player __instance)
@@ -759,7 +767,7 @@ namespace LootNet.Services
 
     internal static class KillTracker
     {
-        // __0 is the second param by position - the name varies across EFT Player subclasses
+
         internal static void Postfix(Player __instance, IPlayer __0, DamageInfoStruct __1)
         {
             try

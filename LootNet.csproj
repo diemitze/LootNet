@@ -6,7 +6,7 @@
     <RootNamespace>LootNet</RootNamespace>
     <Nullable>disable</Nullable>
     <Authors>user</Authors>
-    <AssemblyVersion>1.0.0</AssemblyVersion>
+    <AssemblyVersion>1.0.7</AssemblyVersion>
     <FileVersion>$(AssemblyVersion)</FileVersion>
     <Configurations>Debug;Release</Configurations>
     <Version>$(AssemblyVersion)</Version>
@@ -26,6 +26,10 @@
     <Compile Remove="SPT-PitFireTeam\**" />
     <EmbeddedResource Remove="SPT-PitFireTeam\**" />
     <None Remove="SPT-PitFireTeam\**" />
+    <!-- Fika companion plugin builds as its own project (references Fika.Core) -->
+    <Compile Remove="fika\**" />
+    <EmbeddedResource Remove="fika\**" />
+    <None Remove="fika\**" />
   </ItemGroup>
 
   <ItemGroup>
@@ -113,9 +117,28 @@
           UseHardlinksIfPossible="false"
           Retries="3"
           RetryDelayMilliseconds="500" />
+    <!-- Also deploy to both Fika dev installs (host + player2) for multiplayer testing -->
+    <MakeDir Directories="D:\SPT Fika dev\BepInEx\plugins\LootNet" />
+    <Copy SourceFiles="$(TargetPath)"
+          DestinationFolder="D:\SPT Fika dev\BepInEx\plugins\LootNet"
+          SkipUnchangedFiles="false"
+          UseHardlinksIfPossible="false"
+          Retries="3"
+          RetryDelayMilliseconds="500"
+          Condition="Exists('D:\SPT Fika dev\BepInEx')" />
+    <MakeDir Directories="D:\SPT fika dev player2\BepInEx\plugins\LootNet" />
+    <Copy SourceFiles="$(TargetPath)"
+          DestinationFolder="D:\SPT fika dev player2\BepInEx\plugins\LootNet"
+          SkipUnchangedFiles="false"
+          UseHardlinksIfPossible="false"
+          Retries="3"
+          RetryDelayMilliseconds="500"
+          Condition="Exists('D:\SPT fika dev player2\BepInEx')" />
   </Target>
 
-  <Target Name="PackageModForDistribution" AfterTargets="Build">
+  <!-- SkipModPackaging is set true when the Fika project triggers an inner build of this project,
+       preventing infinite recursion (Fika references LootNet, packaging builds Fika). -->
+  <Target Name="PackageModForDistribution" AfterTargets="Build" Condition="'$(SkipModPackaging)' != 'true'">
     <PropertyGroup>
       <ModName>$(AssemblyName)</ModName>
       <ZipFileName>$(ModName).zip</ZipFileName>
@@ -124,9 +147,14 @@
       <ServerPackageDir>$(TempPackageDir)\SPT\user\mods\LootNetServer</ServerPackageDir>
       <ServerProjectPath>$(ProjectDir)server\LootNetServer.csproj</ServerProjectPath>
       <ServerOutputDir>$(ProjectDir)server\bin\Release</ServerOutputDir>
+      <FikaProjectPath>$(ProjectDir)fika\LootNetFika.csproj</FikaProjectPath>
+      <FikaDll>$(ProjectDir)fika\bin\$(Configuration)\netstandard2.1\LootNetFika.dll</FikaDll>
     </PropertyGroup>
     <Message Text="--- Building server mod ---" Importance="high" />
     <Exec Command="dotnet build &quot;$(ServerProjectPath)&quot; -c Release --nologo -v q"
+          IgnoreExitCode="true" />
+    <Message Text="--- Building Fika companion ---" Importance="high" />
+    <Exec Command="dotnet build &quot;$(FikaProjectPath)&quot; -c $(Configuration) -p:SkipModPackaging=true --nologo -v q"
           IgnoreExitCode="true" />
     <PropertyGroup>
       <ServerDllExists Condition="Exists('$(ServerOutputDir)\LootNetServer.dll')">true</ServerDllExists>
@@ -137,6 +165,10 @@
     <MakeDir Directories="$(ServerPackageDir)" Condition="'$(ServerDllExists)' == 'true'" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ClientPackageDir)" />
     <Copy SourceFiles="$(ProjectDir)Resources\weii weii.mp4" DestinationFolder="$(ClientPackageDir)" Condition="Exists('$(ProjectDir)Resources\weii weii.mp4')" />
+    <!-- Bundle the Fika companion if it's been built (build the solution to include it) -->
+    <Copy SourceFiles="$(FikaDll)" DestinationFolder="$(ClientPackageDir)" Condition="Exists('$(FikaDll)')" />
+    <Message Text="--- Fika companion bundled: $(FikaDll) ---" Importance="high" Condition="Exists('$(FikaDll)')" />
+    <Message Text="--- Fika companion NOT bundled (build solution to include LootNetFika.dll) ---" Importance="high" Condition="!Exists('$(FikaDll)')" />
     <Copy SourceFiles="$(ServerOutputDir)\LootNetServer.dll" DestinationFolder="$(ServerPackageDir)" Condition="'$(ServerDllExists)' == 'true'" />
     <ZipDirectory SourceDirectory="$(TempPackageDir)" DestinationFile="$(ProjectDir)$(ZipFileName)" Overwrite="true" />
     <RemoveDir Directories="$(TempPackageDir)" />

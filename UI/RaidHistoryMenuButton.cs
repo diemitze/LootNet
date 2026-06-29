@@ -21,8 +21,6 @@ namespace LootNet.UI
                 return;
             }
 
-            // The nav buttons (CHARACTER, TRADERS…) live in a HorizontalLayoutGroup.
-            // Find whichever one has the most children - that's the main nav container.
             var container = FindNavContainer(taskBar);
             if (container == null)
             {
@@ -32,8 +30,6 @@ namespace LootNet.UI
 
             _button = BuildNavButton(container);
         }
-
-        // ── Finding the right container ──────────────────────────────────────────
 
         private static Transform FindNavContainer(MenuTaskBar taskBar)
         {
@@ -49,8 +45,6 @@ namespace LootNet.UI
             }
             return best?.transform;
         }
-
-        // ── Building the button ──────────────────────────────────────────────────
 
         private static GameObject BuildNavButton(Transform parent)
         {
@@ -70,7 +64,6 @@ namespace LootNet.UI
             var bg = go.AddComponent<Image>();
             bg.color = Color.clear;
 
-            // 3-bar list icon anchored left-center.
             const float IconW = 14f;
             const float IconX = 8f;
             var iconGo = new GameObject("Icon");
@@ -88,7 +81,7 @@ namespace LootNet.UI
                 var barGo = new GameObject($"Bar{i}");
                 barGo.transform.SetParent(iconGo.transform, false);
                 var barRt = barGo.AddComponent<RectTransform>();
-                // Stack three 2px-tall bars with 2.5px gap.
+
                 barRt.anchorMin        = new Vector2(0f, 1f);
                 barRt.anchorMax        = new Vector2(1f, 1f);
                 barRt.pivot            = new Vector2(0f, 1f);
@@ -98,7 +91,6 @@ namespace LootNet.UI
                 bars[i].color = normalColor;
             }
 
-            // Label offset to the right of the icon.
             var labelGo = new GameObject("Label");
             labelGo.transform.SetParent(go.transform, false);
             var labelRt = labelGo.AddComponent<RectTransform>();

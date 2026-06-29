@@ -21,7 +21,6 @@ namespace LootNet.Patches
             if (_fired) return;
             _fired = true;
 
-            // Keep SessionCounters polling for ~4s past raid end to capture the survival/extract bonus
             RaidTracker.OpenExtraPollWindow(4f);
             var stats = RaidTracker.BuildPendingStats();
             RaidTracker.ResetAfterRaid();
@@ -33,12 +32,27 @@ namespace LootNet.Patches
                      ?? __instance.gameObject.AddComponent<CanvasGroup>();
             endCg.alpha = 0f;
 
-            RaidSummaryDisplay.Instance.QueueSummary(stats);
-            RaidSummaryDisplay.Instance.OnHidden += () =>
+            bool teamRaid = RaidTracker.IsTeamRaid?.Invoke() == true;
+            if (teamRaid)
             {
-                _fired = false;
-                if (endCg != null) endCg.alpha = 1f;
-            };
+                Plugin.LogSource.LogInfo("[LootNet] Coop raid -> opening team summary panel directly.");
+
+                TeamSummaryDisplay.Instance.ShowForRaid(stats);
+                TeamSummaryDisplay.Instance.OnClosed += () =>
+                {
+                    _fired = false;
+                    if (endCg != null) endCg.alpha = 1f;
+                };
+            }
+            else
+            {
+                RaidSummaryDisplay.Instance.QueueSummary(stats);
+                RaidSummaryDisplay.Instance.OnHidden += () =>
+                {
+                    _fired = false;
+                    if (endCg != null) endCg.alpha = 1f;
+                };
+            }
         }
     }
 }

@@ -1,0 +1,81 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>LootNetFika</AssemblyName>
+    <RootNamespace>LootNet.Fika</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyVersion>1.0.7</AssemblyVersion>
+    <FileVersion>1.0.7</FileVersion>
+    <Deterministic>true</Deterministic>
+    <!-- Fika DLLs live only in the Fika dev install -->
+    <FikaInstall>D:\SPT Fika dev</FikaInstall>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Base mod: provides RaidStats, RaidTracker.OnLocalSummaryBuilt, TeamSummaryStore -->
+    <ProjectReference Include="..\LootNet.csproj">
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Fika.Core">
+      <HintPath>$(FikaInstall)\BepInEx\plugins\Fika\Fika.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(FikaInstall)\BepInEx\core\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="BepInEx">
+      <HintPath>$(FikaInstall)\BepInEx\core\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Comfort">
+      <HintPath>$(FikaInstall)\EscapeFromTarkov_Data\Managed\Comfort.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(FikaInstall)\EscapeFromTarkov_Data\Managed\Newtonsoft.Json.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="spt-common">
+      <HintPath>$(FikaInstall)\BepInEx\plugins\spt\spt-common.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(FikaInstall)\EscapeFromTarkov_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(FikaInstall)\EscapeFromTarkov_Data\Managed\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(FikaInstall)\EscapeFromTarkov_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="DeployFikaPlugin" AfterTargets="Build">
+    <MakeDir Directories="$(FikaInstall)\BepInEx\plugins\LootNet" Condition="Exists('$(FikaInstall)\BepInEx')" />
+    <Copy SourceFiles="$(TargetPath)"
+          DestinationFolder="$(FikaInstall)\BepInEx\plugins\LootNet"
+          SkipUnchangedFiles="false"
+          Retries="3"
+          RetryDelayMilliseconds="500"
+          Condition="Exists('$(FikaInstall)\BepInEx')" />
+    <!-- player2 client install -->
+    <MakeDir Directories="D:\SPT fika dev player2\BepInEx\plugins\LootNet" Condition="Exists('D:\SPT fika dev player2\BepInEx')" />
+    <Copy SourceFiles="$(TargetPath)"
+          DestinationFolder="D:\SPT fika dev player2\BepInEx\plugins\LootNet"
+          SkipUnchangedFiles="false"
+          Retries="3"
+          RetryDelayMilliseconds="500"
+          Condition="Exists('D:\SPT fika dev player2\BepInEx')" />
+  </Target>
+
+</Project>

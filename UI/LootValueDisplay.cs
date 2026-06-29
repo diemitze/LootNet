@@ -22,7 +22,7 @@ namespace LootNet.UI
 
         private GameObject       _original;
         private GameObject       _clone;
-        private TextMeshProUGUI  _cloneLabel;   // cached so RefreshText doesn't call Find() every frame
+        private TextMeshProUGUI  _cloneLabel;
         private double           _currentValue;
 
         private void Awake()
@@ -65,7 +65,7 @@ namespace LootNet.UI
             _currentValue = 0;
         }
 
-        public void TryCreateFromNativeUI() { }   // kept for compatibility
+        public void TryCreateFromNativeUI() { }
 
         private void EnsureClone()
         {
@@ -95,7 +95,6 @@ namespace LootNet.UI
                 rt.localScale = new Vector3(1.75f, 1.75f, 1);
             }
 
-            // Hide the expand/collapse arrow
             var arrow = _clone.transform.Find("ArrowHolder");
             if (arrow != null) arrow.gameObject.SetActive(false);
 

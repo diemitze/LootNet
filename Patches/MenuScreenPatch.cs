@@ -17,8 +17,7 @@ namespace LootNet.Patches
         [PatchPostfix]
         private static void PatchPostfix()
         {
-            // MenuTaskBar lives alongside MenuScreen under MenuUI, not inside it.
-            // Defer one frame so all siblings are fully Awake before we search.
+
             RaidHistoryDisplay.Instance.StartCoroutine(InjectNextFrame());
         }
 

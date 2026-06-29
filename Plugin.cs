@@ -13,7 +13,7 @@ using UnityEngine;
 
 namespace LootNet
 {
-    [BepInPlugin("com.20fpsguy.LootNet", "LootNet", "1.0.6")]
+    [BepInPlugin("com.20fpsguy.LootNet", "LootNet", "1.0.7")]
     [BepInDependency("com.20fpsguy.QuickLootServer", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -105,14 +105,13 @@ namespace LootNet
             DontDestroyOnLoad(trackerObj);
             trackerObj.AddComponent<RaidTracker>();
 
-            // Host the XP poll loop on Plugin (BepInEx persistent) because the tracker GO gets disabled on scene transitions
             StartCoroutine(RaidTracker.PollLoop());
 
             Display = LootValueDisplay.Instance;
             SummaryDisplay = RaidSummaryDisplay.Instance;
             _ = RaidHistoryDisplay.Instance;
+            _ = TeamSummaryDisplay.Instance;
 
-            // buffer the video at menu load so there's no hitch mid-raid
             if (VideoEnabled.Value)
                 SummaryDisplay.StartCoroutine(SummaryDisplay.PrepareVideoEarly());
 
@@ -125,7 +124,7 @@ namespace LootNet
             new MenuScreenPatch().Enable();
             PatchAllKillMethods();
 
-            LogSource.LogInfo("LootNet v1.0.6 loaded!");
+            LogSource.LogInfo("LootNet v1.0.7 loaded!");
         }
     }
 }

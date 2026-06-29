@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <RootNamespace>LootNetServer</RootNamespace>
-    <Version>1.0.0</Version>
+    <Version>1.0.7</Version>
     <Authors>user</Authors>
     <Company>user</Company>
     <Product>LootNetServer</Product>
@@ -24,6 +24,23 @@
   <ItemGroup>
     <_ContentIncludedByDefault Remove="dist\package.json" />
   </ItemGroup>
+
+  <Target Name="DeployServerMod" AfterTargets="Build">
+    <ItemGroup>
+      <FikaServerInstall Include="D:\SPT Fika dev\SPT\user\mods" />
+      <FikaServerInstall Include="D:\SPT fika dev player2\SPT\user\mods" />
+    </ItemGroup>
+    <MakeDir Directories="%(FikaServerInstall.Identity)\LootNetServer" Condition="Exists('%(FikaServerInstall.Identity)')" />
+    <Copy SourceFiles="$(TargetPath)"
+          DestinationFolder="%(FikaServerInstall.Identity)\LootNetServer"
+          SkipUnchangedFiles="false"
+          Condition="Exists('%(FikaServerInstall.Identity)')" />
+    <Copy SourceFiles="$(ProjectDir)package.json"
+          DestinationFolder="%(FikaServerInstall.Identity)\LootNetServer"
+          SkipUnchangedFiles="true"
+          Condition="Exists('%(FikaServerInstall.Identity)')" />
+    <Message Text="--- Server mod deployed to Fika installs ---" Importance="high" />
+  </Target>
 
   <Target Name="PackageModForDistribution" AfterTargets="Build">
     <PropertyGroup>
