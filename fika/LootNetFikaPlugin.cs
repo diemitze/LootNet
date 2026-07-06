@@ -16,12 +16,8 @@ using UnityEngine;
 
 namespace LootNet.Fika
 {
-    // Thin loader. This type is Fika-free on purpose: Mono resolves the types used in
-    // a class's *method signatures* at class-load time (unlike .NET Framework), so any
-    // Fika type here would make BepInEx's AddComponent throw a FileNotFoundException
-    // before Awake can run — even with a soft dependency. All Fika-touching code lives
-    // in FikaBridge, which is only loaded once we've confirmed Fika is installed.
-    [BepInPlugin("com.20fpsguy.LootNet.fika", "LootNet.Fika", "1.0.7")]
+    // No Fika types in this class: Mono resolves signature types at class-load, crashes without Fika installed.
+    [BepInPlugin("com.20fpsguy.LootNet.fika", "LootNet.Fika", "1.0.8")]
     [BepInDependency("com.fika.core", BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency("com.20fpsguy.LootNet")]
     internal class LootNetFikaPlugin : BaseUnityPlugin
@@ -40,13 +36,10 @@ namespace LootNet.Fika
                 return;
             }
 
-            // Fika is present: loading FikaBridge resolves Fika.Core, which is safe now.
             gameObject.AddComponent<FikaBridge>();
         }
     }
 
-    // Carries every Fika type reference. Only instantiated when Fika is confirmed
-    // present, so Mono never has to resolve Fika.Core when it isn't installed.
     internal class FikaBridge : MonoBehaviour
     {
         private static ManualLogSource Log => LootNetFikaPlugin.Log;

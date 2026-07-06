@@ -51,6 +51,12 @@ namespace LootNet.Services
         public static Func<int> ExpectedTeammates;
 
         private static readonly Dictionary<string, (string Name, string TemplateId, double Value)> _foundItems = new();
+
+        private static readonly Dictionary<string, int> _spawnStackUnits = new();
+        private static readonly Dictionary<string, (string Name, int Units)> _foundStacks = new();
+        private static readonly Dictionary<string, string> _stackNames = new();
+        private static readonly HashSet<string> _excludedStackTemplates = new();
+        private static readonly Dictionary<string, bool> _stackableCache = new();
         private static readonly Dictionary<string, (string Name, int Kills)> _botKills = new();
         private static readonly HashSet<string> _recentKillIds = new();
         private static readonly HashSet<string> _confirmedFollowerIds = new();
@@ -71,8 +77,10 @@ namespace LootNet.Services
         {
             get
             {
+                RecountStacks();
                 double sum = 0;
                 foreach (var kv in _foundItems) sum += kv.Value.Value;
+                foreach (var kv in _foundStacks) sum += kv.Value.Units * Plugin.PriceService.GetPrice(kv.Key);
                 return sum;
             }
         }
@@ -105,6 +113,10 @@ namespace LootNet.Services
         {
             SpawnedItemIds.Clear();
             _foundItems.Clear();
+            _spawnStackUnits.Clear();
+            _foundStacks.Clear();
+            _stackNames.Clear();
+            _excludedStackTemplates.Clear();
             _botKills.Clear();
             _recentKillIds.Clear();
             _confirmedFollowerIds.Clear();
@@ -146,12 +158,29 @@ namespace LootNet.Services
             {
                 foreach (var item in player.Inventory.GetPlayerItems(spawnSlots))
                     foreach (var child in item.GetAllItems())
-                        SpawnedItemIds.Add(child.Id.ToString());
+                    {
+                        if (IsStackable(child))
+                        {
+                            string tpl = child.TemplateId.ToString();
+                            _spawnStackUnits.TryGetValue(tpl, out int units);
+                            _spawnStackUnits[tpl] = units + child.StackObjectsCount;
+                        }
+                        else
+                        {
+                            SpawnedItemIds.Add(child.Id.ToString());
+                        }
+                    }
             }
         }
 
         public static void TrackItemAdded(Item item)
         {
+            if (IsStackable(item))
+            {
+                RegisterStackTemplate(item);
+                return;
+            }
+
             string id = item.Id.ToString();
             if (!IsScavRaid && SpawnedItemIds.Contains(id)) return;
             if (_foundItems.ContainsKey(id)) return;
@@ -161,6 +190,67 @@ namespace LootNet.Services
             string templateId = item.TemplateId.ToString();
             double price = Plugin.PriceService.IsLoaded ? Plugin.PriceService.GetPrice(templateId) : 0;
             _foundItems[id] = (item.LocalizedName(), templateId, price);
+        }
+
+        private static bool IsStackable(Item item)
+        {
+            string tpl = item.TemplateId.ToString();
+            if (_stackableCache.TryGetValue(tpl, out bool cached)) return cached;
+
+            bool stackable = false;
+            try { stackable = item.StackMaxSize > 1; } catch { }
+            _stackableCache[tpl] = stackable;
+            return stackable;
+        }
+
+        private static void RegisterStackTemplate(Item item)
+        {
+            string tpl = item.TemplateId.ToString();
+            if (_stackNames.ContainsKey(tpl) || _excludedStackTemplates.Contains(tpl)) return;
+
+            if (IsQuestItem(item) || (Plugin.DefaultFleaRules.Value && !CanSellOnFlea(item)))
+            {
+                _excludedStackTemplates.Add(tpl);
+                return;
+            }
+            _stackNames[tpl] = item.LocalizedName();
+        }
+
+        private static void RecountStacks()
+        {
+            Player mp = null;
+            try { mp = Singleton<GameWorld>.Instance?.MainPlayer; } catch { }
+            if (mp == null) return;
+
+            var counts = new Dictionary<string, int>();
+            try
+            {
+                foreach (var item in mp.Inventory.GetPlayerItems(EPlayerItems.InRaidItems))
+                    foreach (var child in item.GetAllItems())
+                    {
+                        if (!IsStackable(child)) continue;
+                        RegisterStackTemplate(child);
+
+                        string tpl = child.TemplateId.ToString();
+                        if (!_stackNames.ContainsKey(tpl)) continue;
+
+                        counts.TryGetValue(tpl, out int c);
+                        counts[tpl] = c + child.StackObjectsCount;
+                    }
+            }
+            catch (Exception ex)
+            {
+                Plugin.LogSource.LogWarning($"[LootNet] RecountStacks failed: {ex.Message}");
+                return;
+            }
+
+            _foundStacks.Clear();
+            foreach (var kv in counts)
+            {
+                _spawnStackUnits.TryGetValue(kv.Key, out int spawn);
+                int found = kv.Value - spawn;
+                if (found > 0) _foundStacks[kv.Key] = (_stackNames[kv.Key], found);
+            }
         }
 
         private static bool IsQuestItem(Item item)
@@ -220,6 +310,8 @@ namespace LootNet.Services
 
         public static void TrackItemRemoved(Item item)
         {
+            if (IsStackable(item)) return;
+
             string id = item.Id.ToString();
             if (!IsScavRaid && SpawnedItemIds.Contains(id)) return;
             _foundItems.Remove(id);
@@ -249,7 +341,8 @@ namespace LootNet.Services
 
         public static RaidStats ComputeStats()
         {
-            bool hasLoot  = _foundItems.Count > 0;
+            RecountStacks();
+            bool hasLoot  = _foundItems.Count > 0 || _foundStacks.Count > 0;
             bool hasKills = _pmcKills > 0 || _scavKills > 0;
             bool survived = !PlayerDied;
             if (survived)
@@ -268,6 +361,12 @@ namespace LootNet.Services
 
             var allFound = _foundItems.Values.Where(x => x.Value > 0).ToList();
 
+            var stackFound = _foundStacks
+                .Select(kv => (kv.Value.Name, Units: kv.Value.Units,
+                               Total: kv.Value.Units * Plugin.PriceService.GetPrice(kv.Key)))
+                .Where(x => x.Total > 0)
+                .ToList();
+
             var grouped = allFound
                 .GroupBy(x => x.TemplateId)
                 .Select(g =>
@@ -277,6 +376,7 @@ namespace LootNet.Services
                     string name  = count > 1 ? $"{g.First().Name} x{count}" : g.First().Name;
                     return (name, total);
                 })
+                .Concat(stackFound.Select(x => (name: $"{x.Name} x{x.Units}", total: x.Total)))
                 .OrderByDescending(x => x.total)
                 .ToList();
 
@@ -286,8 +386,8 @@ namespace LootNet.Services
 
             return new RaidStats
             {
-                ItemsFound      = allFound.Count,
-                TotalFoundValue = allFound.Sum(x => x.Value),
+                ItemsFound      = allFound.Count + stackFound.Count,
+                TotalFoundValue = allFound.Sum(x => x.Value) + stackFound.Sum(x => x.Total),
                 PmcKills        = _pmcKills,
                 ScavKills       = _scavKills,
                 TopItems        = grouped.Take(5).ToList(),
