@@ -50,6 +50,8 @@ namespace LootNet.Services
 
         public static Func<int> ExpectedTeammates;
 
+        public static Func<string> LocalPlayerId;
+
         private static readonly Dictionary<string, (string Name, string TemplateId, double Value)> _foundItems = new();
 
         private static readonly Dictionary<string, int> _spawnStackUnits = new();
@@ -134,6 +136,7 @@ namespace LootNet.Services
 
             ClearRaidState();
             TeamSummaryStore.Clear();
+            HighScoreState.Clear();
             _latestSessionXp = 0;
             _cachedProfileForPolling = player.Profile;
             IsScavRaid      = player.Side == EPlayerSide.Savage;

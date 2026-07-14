@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using BepInEx;
 using BepInEx.Bootstrap;
@@ -66,6 +67,7 @@ namespace LootNet.Fika
 
             RaidTracker.IsTeamRaid               = () => _isTeamRaid && !FikaBackendUtils.IsHeadless;
             RaidTracker.ExpectedTeammates        = () => _expectedTeammates;
+            RaidTracker.LocalPlayerId            = () => _playerId;
 
             try
             {
@@ -152,7 +154,7 @@ namespace LootNet.Fika
                 _snapshotSubmitted = true;
                 var dto = TeamSummaryDto.From(stats, _playerId, _nickname);
                 Log.LogDebug($"[LootNet.Fika] Extract snapshot relayed (group {_groupId}, {_nickname}, ₽{stats.TotalFoundValue:N0}).");
-                _ = SubmitAsync(_groupId, _playerId, dto);
+                _ = SubmitAsync(_groupId, _playerId, dto, _expectedTeammates + 1);
             }
             catch (Exception ex) { Log?.LogWarning($"Extract snapshot relay failed: {ex.Message}"); }
         }
@@ -185,7 +187,7 @@ namespace LootNet.Fika
 
                 var dto = TeamSummaryDto.From(stats, _playerId, _nickname);
                 Log.LogDebug($"[LootNet.Fika] Submitting summary (group {_groupId}, {_nickname}, ₽{stats.TotalFoundValue:N0}).");
-                _ = SubmitAsync(_groupId, _playerId, dto);
+                _ = SubmitAsync(_groupId, _playerId, dto, _expectedTeammates + 1);
             }
             catch (Exception ex) { Log.LogError($"Summary submit prep failed: {ex}"); }
         }
@@ -200,15 +202,16 @@ namespace LootNet.Fika
             _ = FetchAsync(_groupId);
         }
 
-        private static async Task SubmitAsync(string groupId, string playerId, TeamSummaryDto dto)
+        private static async Task SubmitAsync(string groupId, string playerId, TeamSummaryDto dto, int expectedMembers)
         {
             try
             {
                 string body = JsonConvert.SerializeObject(new SubmitRequest
                 {
-                    GroupId  = groupId,
-                    PlayerId = playerId,
-                    Payload  = JsonConvert.SerializeObject(dto),
+                    GroupId         = groupId,
+                    PlayerId        = playerId,
+                    Payload         = JsonConvert.SerializeObject(dto),
+                    ExpectedMembers = expectedMembers,
                 });
                 await RequestHandler.PostJsonAsync(SubmitPath, body);
             }
@@ -226,33 +229,56 @@ namespace LootNet.Fika
                 JToken data = JObject.Parse(resp)["data"];
                 if (data == null) return;
 
-                JArray arr = data.Type == JTokenType.String
-                    ? JArray.Parse(data.Value<string>() ?? "[]")
-                    : data as JArray;
-                if (arr == null) return;
+                JObject obj = data.Type == JTokenType.String
+                    ? JObject.Parse(data.Value<string>() ?? "{}")
+                    : data as JObject;
+                if (obj == null) return;
 
-                int added = 0;
-                foreach (JToken item in arr)
+                if (obj["summaries"] is JArray arr)
                 {
-                    TeamSummaryDto dto;
-                    try { dto = item.ToObject<TeamSummaryDto>(); }
-                    catch { continue; }
-                    if (dto == null) continue;
-                    if (!string.IsNullOrEmpty(_playerId) && dto.PlayerId == _playerId) continue;
+                    foreach (JToken item in arr)
+                    {
+                        TeamSummaryDto dto;
+                        try { dto = item.ToObject<TeamSummaryDto>(); }
+                        catch { continue; }
+                        if (dto == null) continue;
+                        if (!string.IsNullOrEmpty(_playerId) && dto.PlayerId == _playerId) continue;
 
-                    string key = string.IsNullOrEmpty(dto.PlayerId) ? dto.PlayerName : dto.PlayerId;
-                    TeamSummaryStore.Submit(key, dto.ToStats());
-                    added++;
+                        string key = string.IsNullOrEmpty(dto.PlayerId) ? dto.PlayerName : dto.PlayerId;
+                        TeamSummaryStore.Submit(key, dto.ToStats());
+                    }
                 }
+
+                var individual = new Dictionary<string, HighScoreState.Individual>();
+                if (obj["records"] is JObject recs)
+                {
+                    foreach (var prop in recs.Properties())
+                    {
+                        double r = prop.Value["r"]?.Value<double>() ?? 0;
+                        bool   n = prop.Value["n"]?.Value<bool>()   ?? false;
+                        individual[prop.Name] = new HighScoreState.Individual(r, n);
+                    }
+                }
+
+                double tr = 0, tl = 0; bool tn = false;
+                if (obj["team"] is JObject tm)
+                {
+                    tr = tm["r"]?.Value<double>() ?? 0;
+                    tl = tm["l"]?.Value<double>() ?? 0;
+                    tn = tm["n"]?.Value<bool>()   ?? false;
+                }
+
+                HighScoreState.SetFromServer(individual, new HighScoreState.TeamScore(tr, tl, tn));
             }
             catch (Exception ex) { Log?.LogWarning($"Summary fetch failed: {ex.Message}"); }
         }
 
         private class SubmitRequest
         {
-            [JsonProperty("groupId")]  public string GroupId  { get; set; }
-            [JsonProperty("playerId")] public string PlayerId { get; set; }
-            [JsonProperty("payload")]  public string Payload  { get; set; }
+            [JsonProperty("groupId")]         public string GroupId         { get; set; }
+            [JsonProperty("playerId")]        public string PlayerId        { get; set; }
+            [JsonProperty("payload")]         public string Payload         { get; set; }
+            [JsonProperty("expectedMembers")] public int    ExpectedMembers { get; set; }
         }
 
         private class ListRequest

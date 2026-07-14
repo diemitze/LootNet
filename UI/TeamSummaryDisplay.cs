@@ -35,6 +35,13 @@ namespace LootNet.UI
 
         private static readonly Color Gold      = new Color(1f, 0.84f, 0f);
         private static readonly Color DimGold   = new Color(1f, 0.84f, 0f, 0.35f);
+        private static readonly Color PbMarkC   = new Color(1f, 0.36f, 0.68f);
+        private static readonly Color[] ConfettiPalette =
+        {
+            new Color(1f, 0.84f, 0f), new Color(1f, 0.36f, 0.68f),
+            new Color(0.40f, 1f, 0.45f), new Color(0.40f, 0.80f, 1f),
+            new Color(1f, 1f, 1f),
+        };
         private static readonly Color SurvivedC = new Color(0.40f, 1f, 0.45f);
         private static readonly Color DiedC     = new Color(1f, 0.32f, 0.32f);
         private static readonly Color LabelC    = new Color(0.52f, 0.52f, 0.58f);
@@ -61,6 +68,7 @@ namespace LootNet.UI
         private TextMeshProUGUI _titleText;
         private TextMeshProUGUI _subtitleText;
         private TextMeshProUGUI _heroValue;
+        private TextMeshProUGUI _heroRecord;
         private RectTransform   _board;
         private Image           _refreshBg;
         private Image           _scanLine;
@@ -82,6 +90,10 @@ namespace LootNet.UI
 
         private readonly HashSet<string> _knownKeys = new();
         private bool _firstBuild = true;
+
+        private readonly HashSet<string> _celebratedPb = new();
+        private bool _teamCelebrated;
+        private int  _lastHsVersion = -1;
 
         private readonly List<Coroutine> _animCos = new();
 
@@ -109,6 +121,9 @@ namespace LootNet.UI
             _displayedTotal = 0;
             _firstBuild     = true;
             _knownKeys.Clear();
+            _celebratedPb.Clear();
+            _teamCelebrated = false;
+            _lastHsVersion  = -1;
             _root.SetActive(true);
             TeamSummaryStore.RequestRefresh();
 
@@ -130,9 +145,10 @@ namespace LootNet.UI
         {
             if (!_visible) return;
 
-            if (TeamSummaryStore.Version != _lastVersion)
+            if (TeamSummaryStore.Version != _lastVersion || HighScoreState.Version != _lastHsVersion)
             {
-                _lastVersion = TeamSummaryStore.Version;
+                _lastVersion   = TeamSummaryStore.Version;
+                _lastHsVersion = HighScoreState.Version;
                 string sig = ComputeSig();
                 if (sig != _displayedSig)
                 {
@@ -160,6 +176,7 @@ namespace LootNet.UI
         private IEnumerator FadeIn()
         {
             _canvasGroup.alpha = 0f;
+            DestroyStrayConfetti();
             Rebuild(animate: true);
 
             Vector2 home  = _panel != null ? _panel.anchoredPosition : Vector2.zero;
@@ -242,6 +259,7 @@ namespace LootNet.UI
         private string ComputeSig()
         {
             var sb = new System.Text.StringBuilder();
+            sb.Append("hs").Append(HighScoreState.Version).Append('¶');
             foreach (var e in CollectEntries())
                 sb.Append(e.Key).Append('§').Append(Signature(e.Stats)).Append('¶');
             return sb.ToString();
@@ -286,8 +304,18 @@ namespace LootNet.UI
                 : $"{map}  ·  {entries.Count} players  ·  {kills} kills  ·  {items} items looted";
 
             UpdateHero(total, animate);
+            UpdateTeamRecord(total);
 
-            double maxVal = entries.Count > 0 ? entries.Max(e => e.Stats?.TotalFoundValue ?? 0) : 0;
+            // Bars are scaled so both the biggest haul AND the highest personal record fit on-track,
+            // which lets a record-breaking haul visibly race past its own marker.
+            double barScale = 0;
+            foreach (var e in entries)
+            {
+                double v = e.Stats?.TotalFoundValue ?? 0;
+                double rec = HighScoreState.GetIndividual(EntryPlayerId(e)).Record;
+                if (v > barScale) barScale = v;
+                if (rec > barScale) barScale = rec;
+            }
 
             int expandedCount = entries.Count(e => e.Stats != null && !_collapsedKeys.Contains(e.Key));
             bool dense   = entries.Count >= 6 || expandedCount >= 3;
@@ -299,7 +327,7 @@ namespace LootNet.UI
                 var e = entries[i];
                 bool isNew = !_firstBuild && !_knownKeys.Contains(e.Key);
                 bool expanded = e.Stats != null && !_collapsedKeys.Contains(e.Key);
-                BuildRow(e, i, entries.Count, maxVal, rowH, animate, isNew, expanded);
+                BuildRow(e, i, entries.Count, barScale, rowH, animate, isNew, expanded);
                 if (expanded)
                     BuildExpansion(e, animate, maxFinds);
                 if (isNew) PlaySound("MenuDropdownSelect", "MenuCheckBox");
@@ -374,11 +402,14 @@ namespace LootNet.UI
             if (rt != null) rt.localScale = Vector3.one;
         }
 
-        private void BuildRow(Entry e, int rank, int count, double maxVal, float rowH, bool animate, bool isNew, bool expanded)
+        private void BuildRow(Entry e, int rank, int count, double barScale, float rowH, bool animate, bool isNew, bool expanded)
         {
             var s = e.Stats;
             bool alive    = s?.PlayerSurvived ?? false;
             bool topRow   = rank == 0 && count > 1;
+
+            var pb        = HighScoreState.GetIndividual(EntryPlayerId(e));
+            bool pbIsNew  = pb.IsNew && s != null;
 
             float yNum = rowH >= 70f ? -12f : -8f;
             float yLbl = rowH >= 70f ? -40f : -34f;
@@ -444,8 +475,8 @@ namespace LootNet.UI
 
             double v = s?.TotalFoundValue ?? 0;
             var val = MakeTMP("Haul", row.transform, rowH >= 70f ? 22f : 19f, FontStyles.Bold, TextAlignmentOptions.Right);
-            val.color = ValueColor(v);
-            val.text  = $"₽ {v:N0}";
+            val.color = pbIsNew ? Gold : ValueColor(v);
+            val.text  = pbIsNew ? $"★ ₽ {v:N0}" : $"₽ {v:N0}";
             var vRt = val.rectTransform;
             vRt.anchorMin = vRt.anchorMax = new Vector2(1f, 1f); vRt.pivot = new Vector2(1f, 1f);
             vRt.anchoredPosition = new Vector2(-RightPad, yNum + 2f); vRt.sizeDelta = new Vector2(260f, 28f);
@@ -456,15 +487,31 @@ namespace LootNet.UI
             tRt.anchoredPosition = new Vector2(-RightPad, yLbl - 2f); tRt.sizeDelta = new Vector2(BarW, 5f);
             track.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.06f);
 
-            float frac = maxVal > 0 ? Mathf.Clamp01((float)(v / maxVal)) : 0f;
+            float frac = barScale > 0 ? Mathf.Clamp01((float)(v / barScale)) : 0f;
             if (frac > 0f) frac = Mathf.Max(frac, 0.02f);
             var fill = MakeRect("Fill", track.transform);
             var fRt = fill.GetComponent<RectTransform>();
             fRt.anchorMin = Vector2.zero; fRt.anchorMax = new Vector2(frac, 1f);
             fRt.sizeDelta = Vector2.zero; fRt.anchoredPosition = Vector2.zero;
-            Color fc = ValueColor(v);
-            fill.AddComponent<Image>().color = new Color(fc.r, fc.g, fc.b, 0.85f);
+            Color fc = pbIsNew ? Gold : ValueColor(v);
+            fill.AddComponent<Image>().color = new Color(fc.r, fc.g, fc.b, pbIsNew ? 0.95f : 0.85f);
             if (animate) StartAnim(AnimateBarFill(fRt, frac, 0.55f, 0.15f + rank * 0.06f));
+
+            // Personal-best marker: a notch on the track at this player's record-to-beat.
+            if (pb.Record > 0 && barScale > 0)
+            {
+                float mf = Mathf.Clamp01((float)(pb.Record / barScale));
+                var mk = MakeRect("PbMark", track.transform);
+                var mRt = mk.GetComponent<RectTransform>();
+                mRt.anchorMin = mRt.anchorMax = new Vector2(0f, 0.5f);
+                mRt.pivot = new Vector2(0.5f, 0.5f);
+                mRt.anchoredPosition = new Vector2(mf * BarW, 0f);
+                mRt.sizeDelta = new Vector2(2f, 13f);
+                mk.AddComponent<Image>().color = pbIsNew ? Gold : PbMarkC;
+            }
+
+            if (pbIsNew && _celebratedPb.Add(EntryPlayerId(e)))
+                StartCoroutine(CelebrateRow(row.transform, vRt, 0.15f + rank * 0.06f + 0.55f));
 
             var chev = MakeTMP("Chev", row.transform, 12f, FontStyles.Normal, TextAlignmentOptions.Center);
             chev.color = expanded ? Gold : new Color(0.5f, 0.5f, 0.55f);
@@ -621,6 +668,107 @@ namespace LootNet.UI
             _animCos.Clear();
         }
 
+        private void DestroyStrayConfetti()
+        {
+            if (_root == null) return;
+            for (int i = _root.transform.childCount - 1; i >= 0; i--)
+            {
+                var ch = _root.transform.GetChild(i);
+                if (ch.name == "Confetti") Destroy(ch.gameObject);
+            }
+        }
+
+        private static string EntryPlayerId(Entry e)
+        {
+            if (e.IsLocal) return RaidTracker.LocalPlayerId?.Invoke() ?? LocalKey;
+            return e.Key;
+        }
+
+        private void UpdateTeamRecord(double liveTotal)
+        {
+            if (_heroRecord == null) return;
+            var ts = HighScoreState.Team;
+
+            if (ts.IsNew)
+            {
+                _heroRecord.color = Gold;
+                _heroRecord.text  = "★   NEW TEAM RECORD   ★";
+                if (!_teamCelebrated)
+                {
+                    _teamCelebrated = true;
+                    StartCoroutine(CelebrateTeam());
+                }
+            }
+            else if (ts.Record > 0)
+            {
+                _heroRecord.color = new Color(0.6f, 0.6f, 0.65f);
+                _heroRecord.text  = $"BEST TEAM HAUL  ₽ {ts.Record:N0}";
+            }
+            else
+            {
+                _heroRecord.text = string.Empty;
+            }
+        }
+
+        private IEnumerator CelebrateRow(Transform row, RectTransform valueRt, float delay)
+        {
+            if (delay > 0f) yield return new WaitForSecondsRealtime(delay);
+            PlaySound("QuestCompleted", "RepairComplete");
+            SpawnConfetti(row, new Vector2(1f, 1f), new Vector2(-RightPad - BarW * 0.5f, -18f), 16, 1f);
+            if (valueRt != null) yield return PulseScale(valueRt, 1.12f, 0.3f);
+            if (valueRt != null) valueRt.localScale = Vector3.one;
+        }
+
+        private IEnumerator CelebrateTeam()
+        {
+            yield return new WaitForSecondsRealtime(0.6f);
+            PlaySound("AchievementCompleted", "QuestCompleted");
+            if (_heroValue != null) StartCoroutine(PulseScale(_heroValue.rectTransform, 1.15f, 0.4f));
+            if (_root != null)
+                SpawnConfetti(_root.transform, new Vector2(0.5f, 1f), new Vector2(0f, -150f), 44, 1.7f);
+        }
+
+        private void SpawnConfetti(Transform parent, Vector2 anchor, Vector2 origin, int count, float power)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                var c = MakeRect("Confetti", parent);
+                var rt = c.GetComponent<RectTransform>();
+                rt.anchorMin = rt.anchorMax = anchor; rt.pivot = new Vector2(0.5f, 0.5f);
+                rt.anchoredPosition = origin;
+                float sz = UnityEngine.Random.Range(4f, 8f);
+                rt.sizeDelta = new Vector2(sz, sz);
+                var img = c.AddComponent<Image>();
+                img.color = ConfettiPalette[UnityEngine.Random.Range(0, ConfettiPalette.Length)];
+                img.raycastTarget = false;
+
+                float ang = UnityEngine.Random.Range(55f, 125f) * Mathf.Deg2Rad;
+                float spd = UnityEngine.Random.Range(0.6f, 1.4f) * power;
+                float dir = UnityEngine.Random.value < 0.5f ? -1f : 1f;
+                var vel = new Vector2(Mathf.Cos(ang) * spd * dir, Mathf.Sin(ang) * spd);
+                StartCoroutine(FlyConfetti(rt, img, origin, vel));
+            }
+        }
+
+        private static IEnumerator FlyConfetti(RectTransform rt, Image img, Vector2 origin, Vector2 vel)
+        {
+            const float life = 0.9f, grav = -900f;
+            Color baseC = img.color;
+            float t = 0f;
+            while (t < life)
+            {
+                if (rt == null) yield break;
+                t += Time.unscaledDeltaTime;
+                float x = origin.x + vel.x * t * 120f;
+                float y = origin.y + vel.y * t * 120f + 0.5f * grav * t * t;
+                rt.anchoredPosition = new Vector2(x, y);
+                rt.localRotation = Quaternion.Euler(0f, 0f, t * 540f);
+                img.color = new Color(baseC.r, baseC.g, baseC.b, Mathf.Clamp01(1f - t / life));
+                yield return null;
+            }
+            if (rt != null) Destroy(rt.gameObject);
+        }
+
         private static IEnumerator PulseGhost(CanvasGroup cg)
         {
             float t = 0f;
@@ -771,6 +919,11 @@ namespace LootNet.UI
             heroLabel.color = LabelC; heroLabel.characterSpacing = 4f;
             heroLabel.text  = "TEAM HAUL";
             Place(heroLabel.rectTransform, 0.5f, 1f, 0f, -188f, 400f, 16f);
+
+            _heroRecord = MakeTMP("HeroRecord", panelGo.transform, 12f, FontStyles.Bold, TextAlignmentOptions.Center);
+            _heroRecord.color = new Color(0.6f, 0.6f, 0.65f); _heroRecord.characterSpacing = 2f;
+            _heroRecord.text  = string.Empty;
+            Place(_heroRecord.rectTransform, 0.5f, 1f, 0f, -206f, 700f, 16f);
 
             var boardGo = MakeRect("Board", panelGo.transform);
             _board = boardGo.GetComponent<RectTransform>();

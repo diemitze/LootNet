@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <RootNamespace>LootNetServer</RootNamespace>
-    <Version>1.0.8</Version>
+    <Version>1.0.9</Version>
     <Authors>user</Authors>
     <Company>user</Company>
     <Product>LootNetServer</Product>
@@ -21,10 +21,9 @@
     <PackageReference Include="SPTarkov.Server.Core" Version="4.0.13" />
   </ItemGroup>
 
-  <ItemGroup>
-    <_ContentIncludedByDefault Remove="dist\package.json" />
-  </ItemGroup>
-
+  <!-- Live-test deploy only. SPT 4.0 C# server mods carry their metadata in the DLL
+       (ModMetadata : AbstractModMetadata) — no package.json. The release zip is built by
+       the client project (LootNet.csproj), which bundles this DLL under SPT/user/mods. -->
   <Target Name="DeployServerMod" AfterTargets="Build">
     <ItemGroup>
       <FikaServerInstall Include="D:\SPT Fika dev\SPT\user\mods" />
@@ -35,27 +34,6 @@
           DestinationFolder="%(FikaServerInstall.Identity)\LootNetServer"
           SkipUnchangedFiles="false"
           Condition="Exists('%(FikaServerInstall.Identity)')" />
-    <Copy SourceFiles="$(ProjectDir)package.json"
-          DestinationFolder="%(FikaServerInstall.Identity)\LootNetServer"
-          SkipUnchangedFiles="true"
-          Condition="Exists('%(FikaServerInstall.Identity)')" />
     <Message Text="--- Server mod deployed to Fika installs ---" Importance="high" />
-  </Target>
-
-  <Target Name="PackageModForDistribution" AfterTargets="Build">
-    <PropertyGroup>
-      <ModName>$(AssemblyName)</ModName>
-      <ZipFileName>$(ModName).zip</ZipFileName>
-      <TempPackageDir>$(ProjectDir)obj\Package</TempPackageDir>
-      <ModPackageDir>$(TempPackageDir)\SPT\user\mods\$(ModName)</ModPackageDir>
-    </PropertyGroup>
-    <Message Text="--- Starting Mod packaging for distribution ---" Importance="high" />
-    <RemoveDir Directories="$(TempPackageDir)" />
-    <MakeDir Directories="$(ModPackageDir)" />
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModPackageDir)" />
-    <Copy SourceFiles="$(ProjectDir)package.json" DestinationFolder="$(ModPackageDir)" />
-    <ZipDirectory SourceDirectory="$(TempPackageDir)" DestinationFile="$(ProjectDir)$(ZipFileName)" Overwrite="true" />
-    <RemoveDir Directories="$(TempPackageDir)" />
-    <Message Text="--- Mod successfully packaged at: $(ProjectDir)$(ZipFileName) ---" Importance="high" />
   </Target>
 </Project>
