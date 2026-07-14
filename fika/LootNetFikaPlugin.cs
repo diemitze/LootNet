@@ -79,7 +79,7 @@ namespace LootNet.Fika
             }
             catch (Exception ex) { Log.LogWarning($"Failed to hook CoopGame for extract relay: {ex.Message}"); }
 
-            Log.LogInfo("LootNet.Fika loaded — teammate loot summaries via SPT server relay.");
+            Log.LogInfo("LootNet.Fika loaded  teammate loot summaries via SPT server relay.");
         }
 
         protected void Update()
@@ -166,7 +166,7 @@ namespace LootNet.Fika
 
                 if (FikaBackendUtils.IsHeadless)
                 {
-                    Log.LogDebug("[LootNet.Fika] Headless host — skipping summary relay.");
+                    Log.LogDebug("[LootNet.Fika] Headless host  skipping summary relay.");
                     return;
                 }
 
@@ -175,13 +175,13 @@ namespace LootNet.Fika
 
                 if (!_isTeamRaid)
                 {
-                    Log.LogDebug("[LootNet.Fika] Solo raid — summary not relayed.");
+                    Log.LogDebug("[LootNet.Fika] Solo raid  summary not relayed.");
                     return;
                 }
 
                 if (string.IsNullOrEmpty(_groupId))
                 {
-                    Log.LogWarning("[LootNet.Fika] No Fika group id captured this raid — summary not relayed.");
+                    Log.LogWarning("[LootNet.Fika] No Fika group id captured this raid  summary not relayed.");
                     return;
                 }
 

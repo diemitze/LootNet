@@ -150,29 +150,28 @@ namespace LootNet.Services
 
             var spawnSlots = EPlayerItems.InRaidItems;
 
+            // GetPlayerItems already returns a flat, fully-recursive list  do NOT
+            // walk GetAllItems() on top of it or nested items get counted per depth.
             if (IsScavRaid)
             {
-
-                foreach (var item in player.Inventory.GetPlayerItems(spawnSlots))
-                    foreach (var child in item.GetAllItems())
-                        TrackItemAdded(child);
+                foreach (var child in player.Inventory.GetPlayerItems(spawnSlots))
+                    TrackItemAdded(child);
             }
             else
             {
-                foreach (var item in player.Inventory.GetPlayerItems(spawnSlots))
-                    foreach (var child in item.GetAllItems())
+                foreach (var child in player.Inventory.GetPlayerItems(spawnSlots))
+                {
+                    if (IsStackable(child))
                     {
-                        if (IsStackable(child))
-                        {
-                            string tpl = child.TemplateId.ToString();
-                            _spawnStackUnits.TryGetValue(tpl, out int units);
-                            _spawnStackUnits[tpl] = units + child.StackObjectsCount;
-                        }
-                        else
-                        {
-                            SpawnedItemIds.Add(child.Id.ToString());
-                        }
+                        string tpl = child.TemplateId.ToString();
+                        _spawnStackUnits.TryGetValue(tpl, out int units);
+                        _spawnStackUnits[tpl] = units + child.StackObjectsCount;
                     }
+                    else
+                    {
+                        SpawnedItemIds.Add(child.Id.ToString());
+                    }
+                }
             }
         }
 
@@ -228,18 +227,18 @@ namespace LootNet.Services
             var counts = new Dictionary<string, int>();
             try
             {
-                foreach (var item in mp.Inventory.GetPlayerItems(EPlayerItems.InRaidItems))
-                    foreach (var child in item.GetAllItems())
-                    {
-                        if (!IsStackable(child)) continue;
-                        RegisterStackTemplate(child);
+                // GetPlayerItems is already flat/recursive  one pass, no GetAllItems.
+                foreach (var child in mp.Inventory.GetPlayerItems(EPlayerItems.InRaidItems))
+                {
+                    if (!IsStackable(child)) continue;
+                    RegisterStackTemplate(child);
 
-                        string tpl = child.TemplateId.ToString();
-                        if (!_stackNames.ContainsKey(tpl)) continue;
+                    string tpl = child.TemplateId.ToString();
+                    if (!_stackNames.ContainsKey(tpl)) continue;
 
-                        counts.TryGetValue(tpl, out int c);
-                        counts[tpl] = c + child.StackObjectsCount;
-                    }
+                    counts.TryGetValue(tpl, out int c);
+                    counts[tpl] = c + child.StackObjectsCount;
+                }
             }
             catch (Exception ex)
             {

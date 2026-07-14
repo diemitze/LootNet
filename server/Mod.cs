@@ -365,13 +365,12 @@ public class LootNetCallback(
 {
     public ValueTask<string> HandleGetPrices(string url, EmptyRequestData info, MongoId sessionId)
     {
-        // Base table as a fallback for items with no live offer.
+        // Static table as fallback for items with no live offer.
         var prices = new Dictionary<string, double>();
         foreach (var kvp in ragfairPriceService.GetAllFleaPrices())
             prices[kvp.Key.ToString()] = kvp.Value;
 
-        // Prefer live flea offers so custom/inflated flea prices (e.g. SVM) are picked up.
-        // RequirementsCost is the per-item rouble price; only generated (FakePlayer) offers count.
+        // Live flea offers so custom/inflated prices (e.g. SVM) are reflected.
         var sums = new Dictionary<string, double>();
         var counts = new Dictionary<string, int>();
         foreach (var offer in ragfairOfferService.GetOffers())
