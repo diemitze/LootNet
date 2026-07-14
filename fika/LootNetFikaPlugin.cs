@@ -18,7 +18,7 @@ using UnityEngine;
 namespace LootNet.Fika
 {
     // No Fika types in this class: Mono resolves signature types at class-load, crashes without Fika installed.
-    [BepInPlugin("com.20fpsguy.LootNet.fika", "LootNet.Fika", "1.0.8")]
+    [BepInPlugin("com.20fpsguy.LootNet.fika", "LootNet.Fika", "1.0.9")]
     [BepInDependency("com.fika.core", BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency("com.20fpsguy.LootNet")]
     internal class LootNetFikaPlugin : BaseUnityPlugin
