@@ -3,6 +3,7 @@ using HarmonyLib;
 using LootNet.Services;
 using LootNet.UI;
 using SPT.Reflection.Patching;
+using System;
 using System.Reflection;
 using UnityEngine;
 
@@ -33,6 +34,37 @@ namespace LootNet.Patches
             endCg.alpha = 0f;
 
             bool teamRaid = RaidTracker.IsTeamRaid?.Invoke() == true;
+            var  endScreen = __instance.gameObject;
+
+            Action showReplayButton = null;
+            showReplayButton = () =>
+            {
+                ReplayButtonOverlay.Instance.ShowFor(endScreen, () =>
+                {
+                    ReplayButtonOverlay.Instance.HideNow();
+                    if (endCg != null) endCg.alpha = 0f;
+
+                    if (teamRaid)
+                    {
+                        TeamSummaryDisplay.Instance.ShowForRaid(stats);
+                        TeamSummaryDisplay.Instance.OnClosed += () =>
+                        {
+                            if (endCg != null) endCg.alpha = 1f;
+                            showReplayButton();
+                        };
+                    }
+                    else
+                    {
+                        RaidSummaryDisplay.Instance.Replay(stats);
+                        RaidSummaryDisplay.Instance.OnHidden += () =>
+                        {
+                            if (endCg != null) endCg.alpha = 1f;
+                            showReplayButton();
+                        };
+                    }
+                });
+            };
+
             if (teamRaid)
             {
                 TeamSummaryDisplay.Instance.ShowForRaid(stats);
@@ -40,6 +72,7 @@ namespace LootNet.Patches
                 {
                     _fired = false;
                     if (endCg != null) endCg.alpha = 1f;
+                    showReplayButton();
                 };
             }
             else
@@ -49,6 +82,7 @@ namespace LootNet.Patches
                 {
                     _fired = false;
                     if (endCg != null) endCg.alpha = 1f;
+                    showReplayButton();
                 };
             }
         }

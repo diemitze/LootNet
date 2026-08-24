@@ -13,7 +13,7 @@ using UnityEngine;
 
 namespace LootNet
 {
-    [BepInPlugin("com.20fpsguy.LootNet", "LootNet", "1.0.9")]
+    [BepInPlugin("com.20fpsguy.LootNet", "LootNet", "1.1.1")]
     [BepInDependency("com.20fpsguy.QuickLootServer", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -43,7 +43,10 @@ namespace LootNet
             int deathCount = 0;
             foreach (var type in typeof(Player).Assembly.GetTypes())
             {
-                if (!typeof(IPlayer).IsAssignableFrom(type)) continue;
+                // Player, not IPlayer: BotOwner is an IPlayer but declares
+                // OnBeenKilledByAggressor(Player victim, IPlayer aggressor, ...) with itself as
+                // __instance, so the postfix neither compiles nor means the same thing there.
+                if (!typeof(Player).IsAssignableFrom(type)) continue;
 
                 var method = type.GetMethod(
                     nameof(Player.OnBeenKilledByAggressor),
@@ -124,7 +127,7 @@ namespace LootNet
             new MenuScreenPatch().Enable();
             PatchAllKillMethods();
 
-            LogSource.LogInfo("LootNet v1.0.9 loaded!");
+            LogSource.LogInfo("LootNet v1.1.1 loaded!");
         }
     }
 }

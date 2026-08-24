@@ -9,6 +9,7 @@ using System.Linq;
 using System.Reflection;
 using UnityEngine;
 using Comfort.Common;
+using EFT.Ballistics;
 
 namespace LootNet.Services
 {
@@ -19,6 +20,7 @@ namespace LootNet.Services
         public int PmcKills;
         public int ScavKills;
         public List<(string Name, double Value)> TopItems = new();
+        public List<string> TopItemTemplates = new();   // parallel to TopItems, for icons
         public List<(string Name, int Kills)> FireteamMembers;
         public string MapName;
         public DateTime RaidTime;
@@ -150,8 +152,8 @@ namespace LootNet.Services
 
             var spawnSlots = EPlayerItems.InRaidItems;
 
-            // GetPlayerItems already returns a flat, fully-recursive list  do NOT
-            // walk GetAllItems() on top of it or nested items get counted per depth.
+            // GetPlayerItems already returns a flat, fully-recursive list.
+            // Don't walk GetAllItems() on top of it or nested items get counted per depth.
             if (IsScavRaid)
             {
                 foreach (var child in player.Inventory.GetPlayerItems(spawnSlots))
@@ -227,7 +229,7 @@ namespace LootNet.Services
             var counts = new Dictionary<string, int>();
             try
             {
-                // GetPlayerItems is already flat/recursive  one pass, no GetAllItems.
+                // GetPlayerItems is already flat/recursive, one pass, no GetAllItems.
                 foreach (var child in mp.Inventory.GetPlayerItems(EPlayerItems.InRaidItems))
                 {
                     if (!IsStackable(child)) continue;
@@ -364,7 +366,7 @@ namespace LootNet.Services
             var allFound = _foundItems.Values.Where(x => x.Value > 0).ToList();
 
             var stackFound = _foundStacks
-                .Select(kv => (kv.Value.Name, Units: kv.Value.Units,
+                .Select(kv => (kv.Value.Name, Units: kv.Value.Units, Tpl: kv.Key,
                                Total: kv.Value.Units * Plugin.PriceService.GetPrice(kv.Key)))
                 .Where(x => x.Total > 0)
                 .ToList();
@@ -376,11 +378,13 @@ namespace LootNet.Services
                     int    count = g.Count();
                     double total = g.Sum(x => x.Value);
                     string name  = count > 1 ? $"{g.First().Name} x{count}" : g.First().Name;
-                    return (name, total);
+                    return (name, total, tpl: g.Key);
                 })
-                .Concat(stackFound.Select(x => (name: $"{x.Name} x{x.Units}", total: x.Total)))
+                .Concat(stackFound.Select(x => (name: $"{x.Name} x{x.Units}", total: x.Total, tpl: x.Tpl)))
                 .OrderByDescending(x => x.total)
                 .ToList();
+
+            var top = grouped.Take(5).ToList();
 
             int bonus = TryReadCounterTag("ExpExitStatus");
             int baseXp = xpEarned - bonus;
@@ -392,7 +396,8 @@ namespace LootNet.Services
                 TotalFoundValue = allFound.Sum(x => x.Value) + stackFound.Sum(x => x.Total),
                 PmcKills        = _pmcKills,
                 ScavKills       = _scavKills,
-                TopItems        = grouped.Take(5).ToList(),
+                TopItems         = top.Select(x => (x.name, x.total)).ToList(),
+                TopItemTemplates = top.Select(x => x.tpl).ToList(),
                 FireteamMembers = TryGetFireteamStats(),
                 MapName         = _pendingMapName ?? "Unknown",
                 RaidTime        = _pendingRaidTime,
@@ -870,7 +875,7 @@ namespace LootNet.Services
     internal static class KillTracker
     {
 
-        internal static void Postfix(Player __instance, IPlayer __0, DamageInfoStruct __1)
+        internal static void Postfix(Player __instance, IPlayer __0, DamageInfo __1)
         {
             try
             {

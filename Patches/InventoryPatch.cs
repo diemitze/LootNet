@@ -6,16 +6,18 @@ using LootNet.Services;
 using LootNet.UI;
 using SPT.Reflection.Patching;
 using System.Reflection;
+using EFT.InventoryLogic;
 
 namespace LootNet.Patches
 {
     internal class InventoryPatch : ModulePatch
     {
         protected override MethodBase GetTargetMethod()
-            => AccessTools.Method(typeof(Player), nameof(Player.OnItemAdded));
+            // 4.1 made these explicit interface implementations, so they need the qualified name
+            => AccessTools.Method(typeof(Player), "EFT.IAddHandler.OnItemAdded");
 
         [PatchPostfix]
-        private static void PatchPostfix(Player __instance, GEventArgs1 eventArgs)
+        private static void PatchPostfix(Player __instance, ItemEventArgs eventArgs)
         {
             if (!__instance.IsYourPlayer) return;
             if (!RaidTracker.IsInRaid) return;
@@ -30,10 +32,10 @@ namespace LootNet.Patches
     internal class InventoryRemovePatch : ModulePatch
     {
         protected override MethodBase GetTargetMethod()
-            => AccessTools.Method(typeof(Player), nameof(Player.OnItemRemoved));
+            => AccessTools.Method(typeof(Player), "EFT.IRemoveHandler.OnItemRemoved");
 
         [PatchPostfix]
-        private static void PatchPostfix(Player __instance, GEventArgs3 eventArgs)
+        private static void PatchPostfix(Player __instance, RemoveItemEventArgs eventArgs)
         {
             if (!__instance.IsYourPlayer) return;
             if (!RaidTracker.IsInRaid) return;

@@ -135,7 +135,7 @@ namespace LootNet.UI
 
             if (best == null || best.TotalFoundValue <= 0)
             {
-                _subtitle.text = "THIS SESSION  ·  CLICK OUTSIDE TO CLOSE";
+                _subtitle.text = "THIS SESSION  ·  CLICK A RAID TO REPLAY IT";
                 return;
             }
 
@@ -145,7 +145,8 @@ namespace LootNet.UI
                 $"<color=#555555>  ·  </color>" +
                 $"<color=#bbbbbb>{best.MapName.ToUpper()}</color>" +
                 $"<color=#555555>  ·  </color>" +
-                $"<color=#{goldHex}>₽ {best.TotalFoundValue:N0}</color>";
+                $"<color=#{goldHex}>₽ {best.TotalFoundValue:N0}</color>" +
+                $"<color=#555555>  ·  CLICK A RAID TO REPLAY IT</color>";
         }
 
         private GameObject BuildCard(RaidStats stats, int index)
@@ -214,7 +215,27 @@ namespace LootNet.UI
                 anchorMin: new Vector2(0.42f, 0f), anchorMax: new Vector2(1f, 0.48f),
                 offsetMin: new Vector2(0f, 6f),    offsetMax: new Vector2(-PadR, 0f));
 
+            var replayBtn = card.AddComponent<Button>();
+            replayBtn.targetGraphic = bg;
+            var colors = replayBtn.colors;
+            colors.normalColor      = Color.white;
+            colors.highlightedColor = new Color(1.35f, 1.35f, 1.45f);
+            colors.pressedColor     = new Color(0.8f, 0.8f, 0.9f);
+            colors.fadeDuration     = 0.12f;
+            replayBtn.colors = colors;
+
+            var replayed = stats;
+            replayBtn.onClick.AddListener(() => StartCoroutine(HideThenReplay(replayed)));
+
             return card;
+        }
+
+        /// Let the panel finish fading before the summary screenshots what is behind it.
+        private IEnumerator HideThenReplay(RaidStats stats)
+        {
+            Hide();
+            yield return new WaitForSecondsRealtime(0.4f);
+            Plugin.SummaryDisplay?.Replay(stats);
         }
 
         private static string BuildKillString(RaidStats s)

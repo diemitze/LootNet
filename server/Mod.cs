@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using SPTarkov.DI.Annotations;
 using SPTarkov.Server.Core.DI;
 using SPTarkov.Server.Core.Models.Common;
@@ -7,6 +7,7 @@ using SPTarkov.Server.Core.Models.Enums;
 using SPTarkov.Server.Core.Models.Spt.Mod;
 using SPTarkov.Server.Core.Models.Utils;
 using SPTarkov.Server.Core.Services;
+using SPTarkov.Server.Core.Services.Ragfair;
 using SPTarkov.Server.Core.Utils;
 using System.Collections.Generic;
 using System.Text.Json;
@@ -14,19 +15,19 @@ using System.Text.Json.Nodes;
 
 namespace LootNetServer;
 
-public record ModMetadata : AbstractModMetadata
+public record ModMetadata : IModMetadata
 {
-    public override string ModGuid { get; init; } = "com.20fpsguy.LootNet";
-    public override string Name { get; init; } = "LootNet";
-    public override string Author { get; init; } = "20fpsguy";
-    public override List<string>? Contributors { get; init; }
-    public override SemanticVersioning.Version Version { get; init; } = new("1.0.9");
-    public override SemanticVersioning.Range SptVersion { get; init; } = new("~4.0.0");
-    public override List<string>? Incompatibilities { get; init; }
-    public override Dictionary<string, SemanticVersioning.Range>? ModDependencies { get; init; }
-    public override string? Url { get; init; } = "";
-    public override bool? IsBundleMod { get; init; }
-    public override string License { get; init; } = "MIT";
+    public string ModGuid { get; init; } = "com.20fpsguy.LootNet";
+    public string Name { get; init; } = "LootNet";
+    public string Author { get; init; } = "20fpsguy";
+    public List<string>? Contributors { get; init; }
+    public SemanticVersioning.Version Version { get; init; } = new("1.1.0");
+    public SemanticVersioning.Range SptVersion { get; init; } = new("~4.1.0");
+    public List<string>? Incompatibilities { get; init; }
+    public Dictionary<string, SemanticVersioning.Range>? ModDependencies { get; init; }
+    public string? Url { get; init; } = "";
+    public string License { get; init; } = "MIT";
+    public bool HasPrepatcher { get; init; }
 }
 
 public class RaidSummarySubmitRequest : IRequestData
@@ -344,15 +345,15 @@ public static class RaidSummaryAggregator
 public class LootNetRouter(JsonUtil jsonUtil, LootNetCallback callback) : StaticRouter(jsonUtil, [
     new RouteAction<EmptyRequestData>(
         "/lootnet/prices",
-        async (url, info, sessionId, output) => await callback.HandleGetPrices(url, info, sessionId)
+        async (url, info, sessionId, output, cancellationToken) => await callback.HandleGetPrices(url, info, sessionId)
     ),
     new RouteAction<RaidSummarySubmitRequest>(
         "/lootnet/raidsummary/submit",
-        async (url, info, sessionId, output) => await callback.HandleSubmitSummary(url, info, sessionId)
+        async (url, info, sessionId, output, cancellationToken) => await callback.HandleSubmitSummary(url, info, sessionId)
     ),
     new RouteAction<RaidSummaryListRequest>(
         "/lootnet/raidsummary/list",
-        async (url, info, sessionId, output) => await callback.HandleListSummaries(url, info, sessionId)
+        async (url, info, sessionId, output, cancellationToken) => await callback.HandleListSummaries(url, info, sessionId)
     )
 ])
 { }

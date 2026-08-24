@@ -1,4 +1,4 @@
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using SPT.Common.Http;
 using System;
@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Net.Http;
+using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
 
@@ -46,12 +47,8 @@ namespace LootNet.Services
                 if (!response.IsSuccessStatusCode) return false;
 
                 byte[] bytes = await response.Content.ReadAsByteArrayAsync();
-                if (bytes.Length <= 2) return false;
-
-                using MemoryStream compressedStream = new(bytes, 2, bytes.Length - 2);
-                using DeflateStream deflateStream = new(compressedStream, CompressionMode.Decompress);
-                using StreamReader reader = new(deflateStream);
-                string json = await reader.ReadToEndAsync();
+                string json = DecodeBody(bytes);
+                if (string.IsNullOrEmpty(json)) return false;
 
                 JObject envelope = JObject.Parse(json);
                 JToken data = envelope["data"];
@@ -89,12 +86,8 @@ namespace LootNet.Services
                 }
 
                 byte[] bytes = await response.Content.ReadAsByteArrayAsync();
-                if (bytes.Length <= 2) return;
-
-                using MemoryStream compressedStream = new(bytes, 2, bytes.Length - 2);
-                using DeflateStream deflateStream = new(compressedStream, CompressionMode.Decompress);
-                using StreamReader reader = new(deflateStream);
-                string json = await reader.ReadToEndAsync();
+                string json = DecodeBody(bytes);
+                if (string.IsNullOrEmpty(json)) return;
 
                 JArray items = JObject.Parse(json)?["data"]?["Items"] as JArray;
                 if (items == null) return;
@@ -115,6 +108,46 @@ namespace LootNet.Services
             {
                 Plugin.LogSource.LogError($"LootNet: handbook fallback failed - {ex.Message}");
             }
+        }
+
+        // SPT 4.1.3 streams the biggest routes (handbook/templates among them) instead of
+        // building a string, so the body is no longer guaranteed to be zlib-wrapped. Sniff
+        // the header and fall through to plain text rather than assuming either shape.
+        private static string DecodeBody(byte[] bytes)
+        {
+            if (bytes == null || bytes.Length == 0) return string.Empty;
+
+            try
+            {
+                if (IsZlib(bytes))
+                {
+                    using MemoryStream compressed = new(bytes, 2, bytes.Length - 2);
+                    using DeflateStream deflate = new(compressed, CompressionMode.Decompress);
+                    using StreamReader reader = new(deflate);
+                    return reader.ReadToEnd();
+                }
+
+                if (bytes.Length > 2 && bytes[0] == 0x1F && bytes[1] == 0x8B)
+                {
+                    using MemoryStream compressed = new(bytes);
+                    using GZipStream gzip = new(compressed, CompressionMode.Decompress);
+                    using StreamReader reader = new(gzip);
+                    return reader.ReadToEnd();
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.LogSource.LogWarning($"LootNet: body decompress failed, trying raw - {ex.Message}");
+            }
+
+            return Encoding.UTF8.GetString(bytes).TrimStart('﻿');
+        }
+
+        private static bool IsZlib(byte[] bytes)
+        {
+            if (bytes.Length <= 2) return false;
+            if ((bytes[0] & 0x0F) != 0x08) return false;      // deflate compression method
+            return ((bytes[0] << 8) | bytes[1]) % 31 == 0;    // zlib header checksum
         }
 
         public double GetPrice(string templateId)

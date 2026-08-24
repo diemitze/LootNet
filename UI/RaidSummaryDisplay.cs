@@ -12,6 +12,8 @@ using UnityEngine.Video;
 
 namespace LootNet.UI
 {
+    /// Cinema layout: letterbox bars over the frozen death/extract screen, typography
+    /// in the lower third, loot as a quiet right-aligned list. No panels, no badges.
     public class RaidSummaryDisplay : MonoBehaviour
     {
         private static RaidSummaryDisplay _instance;
@@ -31,70 +33,73 @@ namespace LootNet.UI
 
         public event Action OnHidden;
 
-        private const float AutoDismissSeconds = 14f;
-        private const float FadeInDuration     = 0.45f;
-        private const float CountUpDuration    = 2.2f;
-        private const float StaggerDelay       = 0.25f;
-        private const float RowHeight          = 52f;
-        private const float SlideDistance      = 60f;
-        private const float RowSlideDuration   = 0.28f;
+        private const float AutoDismissSeconds = 15f;
+        private const float FadeInDuration     = 0.5f;
+        private const float CountUpDuration    = 1.4f;
+        private const float RowStagger         = 0.2f;
 
-        private CanvasGroup         _canvasGroup;
-        private RawImage            _bgImage;
-        private Image               _scanLine;
-        private GameObject          _root;
-        private RectTransform       _panel;
-        private TextMeshProUGUI     _titleText;
-        private TextMeshProUGUI     _subtitleText;
-        private TextMeshProUGUI     _valueText;
-        private Color               _titleColor = new Color(1f, 0.84f, 0f);
+        private const float BarHeight   = 150f;
+        private const float BodyBottom  = 320f;
+        private const float BodyLeft    = 190f;
+        private const float RuleLeft    = 150f;
+        private const float RuleHeight  = 210f;
+        private const float RowHeight   = 36f;
+        private const int   MaxItemRows = 5;
+        private const float UpperBandY  = 690f;   // the empty band between the loot column and the top bar
+        private const float HeroSize    = 132f;
 
-        private TextMeshProUGUI     _statItemsNum;
-        private TextMeshProUGUI     _statPmcNum;
-        private TextMeshProUGUI     _statScavNum;
-        private CanvasGroup         _statItemsCg;
-        private CanvasGroup         _statPmcCg;
-        private CanvasGroup         _statScavCg;
-        private TextMeshProUGUI     _xpAmountText;
-        private TextMeshProUGUI     _xpLabelText;
-        private CanvasGroup         _xpLineCg;
-        private TextMeshProUGUI     _xpBonusText;
-        private CanvasGroup         _xpBonusCg;
+        private CanvasGroup     _canvasGroup;
+        private RawImage        _bgImage;
+        private RawImage        _tint;
+        private GameObject      _root;
 
-        private TextMeshProUGUI     _dismissText;
-        private RectTransform       _progressBarFill;
-        private Transform           _topItemsContainer;
-        private Image               _valuePulseRing;
-        private GameObject          _fireteamSection;
-        private Transform           _fireteamContainer;
-        private Texture2D           _vignetteTexture;
+        private RectTransform   _barTop;
+        private RectTransform   _barBottom;
+        private RectTransform   _rule;
 
-        private RectTransform       _colDivider;
+        private TextMeshProUGUI _kickerText;
+        private TextMeshProUGUI _titleText;
+        private TextMeshProUGUI _totalText;
+        private TextMeshProUGUI _quipText;
+        private TextMeshProUGUI _metaText;
+        private TextMeshProUGUI _watermarkText;
+        private TextMeshProUGUI _compareText;
 
-        private GameObject          _videoPanel;
-        private CanvasGroup         _videoCg;
-        private RawImage            _videoImage;
-        private VideoPlayer         _videoPlayer;
-        private RenderTexture       _videoRenderTexture;
-        private const float         VideoMaxWidth = 320f;
-        private const string        VideoFileName = "weii weii.mp4";
+        private RectTransform   _heroRoot;
+        private CanvasGroup     _heroCg;
+        private Image           _heroIcon;
+        private TextMeshProUGUI _heroName;
+        private TextMeshProUGUI _heroValue;
+        private CanvasGroup     _quipCg;
 
-        private readonly List<ItemRowData> _itemRows     = new();
-        private readonly List<ItemRowData> _fireteamRows = new();
+        private RectTransform   _sideColumn;
+        private readonly List<SideRow> _itemRows = new();
+        private SideRow         _summaryRow;
+        private SideRow         _bonusRow;
+        private SideRow         _fireteamRow;
 
-        private float      _timer;
-        private double     _currentDisplayValue;
-        private bool       _visible;
-        private Coroutine  _scanLineCoroutine;
+        private RectTransform   _progressBarFill;
+        private Texture2D       _vignetteTexture;
+        private Texture2D       _scrimTexture;
+        private RenderTexture   _bgBlurTexture;
 
-        private struct ItemRowData
+        private GameObject      _videoPanel;
+        private CanvasGroup     _videoCg;
+        private RawImage        _videoImage;
+        private VideoPlayer     _videoPlayer;
+        private RenderTexture   _videoRenderTexture;
+        private const float     VideoMaxWidth = 320f;
+        private const string    VideoFileName = "weii weii.mp4";
+
+        private float _timer;
+        private bool  _visible;
+
+        private struct SideRow
         {
             public CanvasGroup      Cg;
             public RectTransform    Rt;
-            public TextMeshProUGUI  Label;
-            public TextMeshProUGUI  RankBadge;
-            public Image            RankBg;
-            public Image            AccentBar;
+            public TextMeshProUGUI  Left;
+            public TextMeshProUGUI  Right;
         }
 
         private void Awake()
@@ -110,14 +115,8 @@ namespace LootNet.UI
             if (Plugin.ManualDismiss.Value) return;
 
             _timer -= Time.deltaTime;
-            float frac = Mathf.Clamp01(_timer / AutoDismissSeconds);
             if (_progressBarFill != null)
-                _progressBarFill.anchorMax = new Vector2(frac, 1f);
-            if (_dismissText != null)
-            {
-                int secs = Mathf.Max(0, Mathf.CeilToInt(_timer));
-                _dismissText.text = $"Click anywhere to close  ·  {secs}s";
-            }
+                _progressBarFill.anchorMax = new Vector2(Mathf.Clamp01(_timer / AutoDismissSeconds), 1f);
             if (_timer <= 0f) Hide();
         }
 
@@ -128,11 +127,22 @@ namespace LootNet.UI
             StartCoroutine(CaptureAndShow(stats));
         }
 
+        /// Re-shows a past raid from the menu. Screenshot is whatever is on screen now.
+        public void Replay(RaidStats stats)
+        {
+            if (stats == null || _visible) return;
+            OnHidden = null;
+            QueueSummary(stats);
+        }
+
         private IEnumerator CaptureAndShow(RaidStats stats)
         {
+            LootIconCache.RetryFailed();
+
             yield return new WaitForEndOfFrame();
             var tex = ScreenCapture.CaptureScreenshotAsTexture();
-            if (_bgImage != null) _bgImage.texture = tex;
+            if (_bgImage != null) _bgImage.texture = Defocus(tex);
+            Destroy(tex);
             yield return StartCoroutine(AnimateIn(stats));
         }
 
@@ -148,13 +158,14 @@ namespace LootNet.UI
         public void Hide()
         {
             StopAllCoroutines();
+            if (_visible) LootSounds.Play(LootSounds.Close, "MenuEscape");
             _visible = false;
             StartCoroutine(FadeOutAndReveal());
         }
 
         private IEnumerator FadeOutAndReveal()
         {
-            const float fadeDur = 0.5f;
+            const float fadeDur = 0.6f;
             float t = 0f;
             float startAlpha = _canvasGroup != null ? _canvasGroup.alpha : 0f;
             while (t < fadeDur)
@@ -178,12 +189,8 @@ namespace LootNet.UI
             _visible = true;
             _timer   = AutoDismissSeconds;
 
-            if (Plugin.ManualDismiss.Value && _progressBarFill != null)
-                _progressBarFill.gameObject.transform.parent.gameObject.SetActive(false);
-
             bool died = !stats.PlayerSurvived;
-            if (died) PlaySound("PlayerIsDead", "ErrorMessage");
-            else      PlaySound("BackpackOpen");
+            LootSounds.Play(died ? LootSounds.EnterDied : LootSounds.EnterSurvived, "MenuOpenContainer");
 
             float t = 0f;
             while (t < FadeInDuration)
@@ -194,512 +201,363 @@ namespace LootNet.UI
             }
             _canvasGroup.alpha = 1f;
 
-            if (_panel != null)
-            {
-                var startPos = _panel.anchoredPosition + new Vector2(0f, -40f);
-                _panel.anchoredPosition = startPos;
-                t = 0f;
-                const float slideDur = 0.35f;
-                while (t < slideDur)
-                {
-                    t += Time.deltaTime;
-                    float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / slideDur), 3f);
-                    _panel.anchoredPosition = Vector2.Lerp(startPos, startPos + new Vector2(0f, 40f), p);
-                    yield return null;
-                }
-                _panel.anchoredPosition = startPos + new Vector2(0f, 40f);
-            }
+            LootSounds.Play(LootSounds.Bars, "MenuOpenContainer");
+            StartCoroutine(GrowBars(0.65f));
+            StartCoroutine(FadeImage(_tint, 1f, 0.9f));
+            StartCoroutine(FadeText(_watermarkText, new Color(1f, 1f, 1f, 0.05f), 1.4f));
 
-            if (died)
-            {
-                if (_panel != null) StartCoroutine(ShakePanel(_panel, 0.5f, 10f));
-            }
-            else
-            {
-                PlaySound("AchievementCompleted");
-            }
-            yield return StartCoroutine(SlideInText(_titleText, SlideDistance, 0.35f));
-            StartCoroutine(FlashTitle(_titleText, _titleColor));
-            yield return new WaitForSeconds(0.05f);
-            yield return StartCoroutine(SlideInText(_subtitleText, SlideDistance * 0.5f, 0.25f));
+            yield return new WaitForSeconds(0.35f);
+            StartCoroutine(GrowRule(0.5f));
+
+            yield return new WaitForSeconds(0.2f);
+            yield return StartCoroutine(FadeText(_kickerText, new Color(0.54f, 0.54f, 0.54f), 0.6f));
 
             yield return new WaitForSeconds(0.1f);
+            yield return StartCoroutine(RiseText(_titleText, TitleColor(died), 12f, 0.7f));
 
-            StartCoroutine(DrawDivider(0.45f));
+            yield return new WaitForSeconds(0.2f);
+            Color gold = new Color(1f, 0.84f, 0f);
+            StartCoroutine(FadeText(_totalText, gold, 0.5f));
+            yield return StartCoroutine(CountUp(_totalText, stats.TotalFoundValue, CountUpDuration));
+            LootSounds.Play(LootSounds.Total, "MenuCheckBox");
 
-            Color valueColor = ValueColor(stats.TotalFoundValue);
-            _valueText.color = new Color(valueColor.r, valueColor.g, valueColor.b, 0f);
-            yield return StartCoroutine(FadeText(_valueText, new Color(valueColor.r, valueColor.g, valueColor.b), 0.2f));
-            _valueText.text = "₽ 0";
+            if (!string.IsNullOrEmpty(_compareText.text))
+            {
+                float cx = Mathf.Min(BodyLeft + _totalText.preferredWidth + 34f, 1040f);
+                _compareText.rectTransform.anchoredPosition = new Vector2(cx, BodyBottom + 14f);
+                StartCoroutine(FadeText(_compareText, new Color(0.85f, 0.72f, 0.25f), 0.7f));
+            }
 
-            StartCoroutine(SlideInStatRow(_statItemsCg, _statItemsNum, stats.ItemsFound, 0.05f, 0.5f, 1.2f));
-            StartCoroutine(SlideInStatRow(_statPmcCg,   _statPmcNum,   stats.PmcKills,  0.30f, 0.5f, 0.9f));
-            StartCoroutine(SlideInStatRow(_statScavCg,  _statScavNum,  stats.ScavKills, 0.55f, 0.5f, 0.7f));
-            StartCoroutine(FadeInXpLine(stats.XpEarned, 0.40f, 1.4f));
-            StartCoroutine(WatchForXpBonus(stats));
-
-            int rowCount = Mathf.Min(stats.TopItems.Count, 7);
-            EnsureItemRows(rowCount);
-            PrepareItemRows(stats);
-
-            double runningVal  = 0;
-            double totalVal    = stats.TotalFoundValue;
-            Color  vc          = ValueColor(totalVal);
-
+            int rowCount = Mathf.Min(stats.TopItems.Count, MaxItemRows);
             for (int i = 0; i < rowCount; i++)
             {
-                int   idx = i;
-                double itemVal = stats.TopItems[i].Value;
-                runningVal += itemVal;
-                double targetVal = runningVal;
-                bool   isLast    = i == rowCount - 1;
+                yield return StartCoroutine(FadeInRow(_itemRows[i], 0.35f));
+                LootSounds.Play(LootSounds.Tick, "MenuCheckBox");
+                yield return new WaitForSeconds(RowStagger);
+            }
 
-                RevealRow(idx, itemVal);
+            StartCoroutine(FadeInRow(_summaryRow, 0.5f));
+            StartCoroutine(WatchForXpBonus(stats));
 
-                StartCoroutine(BumpValue(targetVal, totalVal, vc, 0.20f, isLast));
+            if (_heroRoot != null && _heroRoot.gameObject.activeSelf)
+            {
+                StartCoroutine(ResolveHeroIcon(stats));
+                StartCoroutine(FadeCanvasGroup(_heroCg, 0.8f));
+            }
 
-                yield return new WaitForSeconds(StaggerDelay);
+            if (_fireteamRow.Cg != null && _fireteamRow.Rt.gameObject.activeSelf)
+            {
+                yield return new WaitForSeconds(0.2f);
+                StartCoroutine(FadeInRow(_fireteamRow, 0.5f));
             }
 
             StartCoroutine(PlayVideoSequence());
 
-            yield return new WaitForSeconds(0.15f);
+            yield return new WaitForSeconds(0.55f);
 
-            if (_fireteamSection != null && _fireteamSection.activeSelf)
+            if (_quipCg != null && !string.IsNullOrEmpty(_quipText.text))
             {
-                yield return new WaitForSeconds(0.1f);
-                for (int i = 0; i < _fireteamRows.Count; i++)
-                {
-                    if (i < stats.FireteamMembers?.Count)
-                        StartCoroutine(SlideUpCard(_fireteamRows[i], 0.28f));
-                    yield return new WaitForSeconds(0.15f);
-                }
+                LootSounds.Play(died ? LootSounds.ResolveDied : LootSounds.ResolveSurvived, "MenuCheckBox");
+                yield return StartCoroutine(FadeCanvasGroup(_quipCg, 0.9f));
             }
 
-            yield return new WaitForSeconds(0.3f);
-            PlaySound("MenuEscape");
-            if (Plugin.ManualDismiss.Value && _dismissText != null)
-                _dismissText.text = "Click anywhere to close";
-            yield return StartCoroutine(FadeText(_dismissText, new Color(0.4f, 0.4f, 0.4f), 0.3f));
-
-            _scanLineCoroutine = StartCoroutine(AnimateScanLine());
+            yield return new WaitForSeconds(0.2f);
+            yield return StartCoroutine(FadeText(_metaText, new Color(0.36f, 0.36f, 0.36f), 0.6f));
         }
 
-        private IEnumerator BumpValue(double targetVal, double totalVal, Color vc, float delay, bool isLast)
+        private void ResetHero(RaidStats stats)
         {
-            yield return new WaitForSeconds(delay);
+            _heroCg.alpha = 0f;
 
-            double startVal = _currentDisplayValue;
-            float t   = 0f;
-            float dur = 0.26f;
-            while (t < dur)
+            bool has = stats.TopItems != null && stats.TopItems.Count > 0;
+            _heroRoot.gameObject.SetActive(has);
+            if (!has) return;
+
+            var (name, value) = stats.TopItems[0];
+            _heroName.text   = name;
+            _heroValue.text  = value > 0 ? $"₽{value:N0}" : "-";
+            _heroValue.color = ValueTint(value);
+
+            _heroIcon.enabled = false;
+            _heroIcon.sprite  = null;
+
+            string tpl = HeroTemplate(stats);
+            if (tpl != null) LootIconCache.Request(tpl);
+        }
+
+        private static string HeroTemplate(RaidStats stats)
+        {
+            var t = stats.TopItemTemplates;
+            return t != null && t.Count > 0 && !string.IsNullOrEmpty(t[0]) ? t[0] : null;
+        }
+
+        /// Icons stream in from the game's bundles, so give it a moment before giving up.
+        /// The block still reads fine as text alone.
+        private IEnumerator ResolveHeroIcon(RaidStats stats)
+        {
+            string tpl = HeroTemplate(stats);
+            if (tpl == null) yield break;
+
+            float wait = 2f;
+            while (wait > 0f && LootIconCache.Get(tpl) == null && LootIconCache.IsPending(tpl))
             {
-                t += Time.deltaTime;
-                _currentDisplayValue = startVal + (targetVal - startVal) * Mathf.Clamp01(t / dur);
-                _valueText.text = $"₽ {_currentDisplayValue:N0}";
+                wait -= Time.deltaTime;
                 yield return null;
             }
-            _currentDisplayValue = targetVal;
-            _valueText.text = $"₽ {targetVal:N0}";
 
-            if (isLast)
-            {
-                _currentDisplayValue = totalVal;
-                _valueText.text = $"₽ {totalVal:N0}";
-                PlaySound("QuestStarted");
-                StartCoroutine(PulseScale(_valueText.rectTransform, 1.08f, 0.25f));
-                if (_valuePulseRing != null) StartCoroutine(PulseRing(_valuePulseRing, 0.5f));
-            }
+            var sprite = LootIconCache.Get(tpl);
+            if (sprite == null || _heroIcon == null) yield break;
+
+            _heroIcon.sprite  = sprite;
+            _heroIcon.enabled = true;
         }
+
+        /// Where this raid lands against the ones before it. Null when there is nothing to
+        /// compare against yet.
+        private static string BuildComparison(RaidStats stats)
+        {
+            double value = stats.TotalFoundValue;
+            if (value <= 0) return null;
+
+            var prior = new List<double>();
+            foreach (var h in RaidTracker.RaidHistory)
+            {
+                if (ReferenceEquals(h, stats)) continue;   // the current raid is already in history
+                if (h.TotalFoundValue > 0) prior.Add(h.TotalFoundValue);
+            }
+            if (prior.Count == 0) return null;
+
+            int rank = 1;
+            foreach (var v in prior) if (v > value) rank++;
+
+            int total = prior.Count + 1;
+            if (rank == 1) return "BEST RAID YET";
+            if (rank <= 3) return $"{Ordinal(rank)} BEST OF YOUR LAST {total}";
+
+            double sum = 0;
+            foreach (var v in prior) sum += v;
+            double avg = sum / prior.Count;
+            if (avg <= 0) return null;
+
+            int pct = Mathf.RoundToInt((float)((value - avg) / avg * 100.0));
+            if (pct == 0) return "DEAD ON YOUR AVERAGE";
+            return pct > 0 ? $"+{pct}% VS YOUR AVERAGE" : $"{pct}% VS YOUR AVERAGE";
+        }
+
+        private static string Ordinal(int n) => n == 2 ? "2ND" : n == 3 ? "3RD" : $"{n}TH";
 
         private IEnumerator WatchForXpBonus(RaidStats stats)
         {
-            int baseXp = stats.XpEarned;
+            int baseXp  = stats.XpEarned;
             int bonusXp = stats.XpBonus;
 
-            yield return new WaitForSecondsRealtime(2.2f);
+            yield return new WaitForSecondsRealtime(1.5f);
 
             if (bonusXp <= 0)
             {
                 float waitT = 0f;
-                const float maxWait = 3f;
-                while (waitT < maxWait)
+                while (waitT < 3f)
                 {
                     waitT += 0.2f;
                     yield return new WaitForSecondsRealtime(0.2f);
-                    int b = Services.RaidTracker.TryReadCounterTag("ExpExitStatus");
+                    int b = RaidTracker.TryReadCounterTag("ExpExitStatus");
                     if (b > 0) { bonusXp = b; break; }
                 }
             }
 
-            if (bonusXp <= 0 || _xpAmountText == null) yield break;
+            if (bonusXp <= 0 || _bonusRow.Cg == null) yield break;
 
-            string statusLabel = stats.PlayerSurvived ? "SURVIVED BONUS" : "EXTRACT BONUS";
-            Color bonusColor   = stats.PlayerSurvived ? new Color(0.55f, 0.90f, 0.55f) : new Color(0.95f, 0.65f, 0.35f);
+            string label = stats.PlayerSurvived ? "survived bonus" : "extract bonus";
+            _bonusRow.Left.text  = $"incl. +{bonusXp:N0} {label}";
+            _bonusRow.Right.text = string.Empty;
+            _bonusRow.Rt.gameObject.SetActive(true);
 
-            var bonusRt = _xpBonusText.rectTransform;
-            Vector2 bonusEndPos = bonusRt.anchoredPosition;
-            Vector2 bonusStartPos = bonusEndPos + new Vector2(0f, -10f);
-            bonusRt.anchoredPosition = bonusStartPos;
-            _xpBonusText.color = new Color(bonusColor.r, bonusColor.g, bonusColor.b, 1f);
-            _xpBonusText.text  = "+0  " + statusLabel;
-
-            PlaySound("QuestStarted");
             int finalXp = baseXp + bonusXp;
-
-            float dur = 0.85f;
-            float t = 0f;
+            float dur = 0.8f, t = 0f;
             while (t < dur)
             {
                 t += Time.unscaledDeltaTime;
-                float p = Mathf.Clamp01(t / dur);
-                float eased = 1f - Mathf.Pow(1f - p, 3f);
-
-                if (_xpBonusCg != null) _xpBonusCg.alpha = Mathf.Clamp01(p * 1.5f);
-                bonusRt.anchoredPosition = Vector2.Lerp(bonusStartPos, bonusEndPos, eased);
-
-                int v = Mathf.RoundToInt(Mathf.Lerp(baseXp, finalXp, eased));
-                _xpAmountText.text = $"+{v:N0}";
-
-                int bv = Mathf.RoundToInt(Mathf.Lerp(0, bonusXp, eased));
-                _xpBonusText.text = $"+{bv:N0}  {statusLabel}";
-
+                float eased = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / dur), 3f);
+                _summaryRow.Right.text = $"+{Mathf.RoundToInt(Mathf.Lerp(baseXp, finalXp, eased)):N0} XP";
+                if (_bonusRow.Cg != null) _bonusRow.Cg.alpha = eased;
                 yield return null;
             }
-            if (_xpBonusCg != null) _xpBonusCg.alpha = 1f;
-            bonusRt.anchoredPosition = bonusEndPos;
-            _xpAmountText.text = $"+{finalXp:N0}";
-            _xpBonusText.text  = $"+{bonusXp:N0}  {statusLabel}";
-
-            PlaySound("MenuCheckBox");
-            StartCoroutine(PulseScale(_xpAmountText.rectTransform, 1.12f, 0.28f));
-            StartCoroutine(PulseScale(_xpBonusText.rectTransform,  1.15f, 0.28f));
-        }
-
-        private IEnumerator FadeInXpLine(int target, float delay, float countDur)
-        {
-            yield return new WaitForSeconds(delay);
-            if (_xpLineCg == null || _xpAmountText == null) yield break;
-
-            if (target <= 0)
-            {
-                _xpLineCg.alpha = 0f;
-                yield break;
-            }
-
-            PlaySound("MenuCheckBox");
-
-            float t = 0f;
-            const float fadeDur = 0.35f;
-            while (t < fadeDur)
-            {
-                t += Time.deltaTime;
-                _xpLineCg.alpha = Mathf.Clamp01(t / fadeDur);
-                yield return null;
-            }
-            _xpLineCg.alpha = 1f;
-
-            t = 0f;
-            while (t < countDur)
-            {
-                t += Time.deltaTime;
-                int v = Mathf.RoundToInt(target * Mathf.Clamp01(t / countDur));
-                _xpAmountText.text = $"+{v:N0}";
-                yield return null;
-            }
-            _xpAmountText.text = $"+{target:N0}";
-        }
-
-        private IEnumerator SlideInStatRow(CanvasGroup cg, TextMeshProUGUI numLabel, int target, float delay, float slideDur, float countDur)
-        {
-            yield return new WaitForSeconds(delay);
-
-            PlaySound("MenuCheckBox");
-
-            var rt       = cg.GetComponent<RectTransform>();
-            var startPos = rt.anchoredPosition - new Vector2(20f, 0f);
-            rt.anchoredPosition = startPos;
-            cg.alpha = 0f;
-
-            float t = 0f;
-            while (t < slideDur)
-            {
-                t += Time.deltaTime;
-                float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / slideDur), 3f);
-                rt.anchoredPosition = Vector2.Lerp(startPos, startPos + new Vector2(20f, 0f), p);
-                cg.alpha = Mathf.Clamp01(t / slideDur * 2f);
-                yield return null;
-            }
-            cg.alpha = 1f;
-
-            t = 0f;
-            while (t < countDur)
-            {
-                t += Time.deltaTime;
-                int v = Mathf.RoundToInt(target * Mathf.Clamp01(t / countDur));
-                numLabel.text = v.ToString();
-                yield return null;
-            }
-            numLabel.text = target.ToString();
-        }
-
-        private IEnumerator DrawDivider(float dur)
-        {
-            if (_colDivider == null) yield break;
-            _colDivider.gameObject.SetActive(true);
-            PlaySound("MenuOpenContainer");
-            float t = 0f;
-            while (t < dur)
-            {
-                t += Time.deltaTime;
-                float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / dur), 3f);
-                _colDivider.anchorMax = new Vector2(_colDivider.anchorMax.x, 1f - p);
-                yield return null;
-            }
-            _colDivider.anchorMax = new Vector2(_colDivider.anchorMax.x, 0f);
+            _summaryRow.Right.text = $"+{finalXp:N0} XP";
+            if (_bonusRow.Cg != null) _bonusRow.Cg.alpha = 1f;
         }
 
         private void ResetUI(RaidStats stats)
         {
             bool died = !stats.PlayerSurvived;
-            _titleText.text     = died ? "YOU ARE DEAD" : "RAID COMPLETE";
-            _titleColor         = died ? new Color(0.95f, 0.18f, 0.18f) : new Color(1f, 0.84f, 0f);
-            _titleText.color      = new Color(_titleColor.r, _titleColor.g, _titleColor.b, 0f);
-            _subtitleText.text    = died ? "FAILED TO EXTRACT" : "LOOT SUMMARY";
-            _subtitleText.color   = new Color(0.55f, 0.55f, 0.55f, 0f);
-            _valueText.text       = "₽ 0";
-            _valueText.color      = Color.clear;
-            _currentDisplayValue  = 0;
-            _dismissText.text   = string.Empty;
-            _dismissText.color  = Color.clear;
 
-            if (_statItemsNum != null) _statItemsNum.text = "0";
-            if (_statPmcNum   != null) _statPmcNum.text   = "0";
-            if (_statScavNum  != null) _statScavNum.text  = "0";
-            if (_statItemsCg  != null) _statItemsCg.alpha = 0f;
-            if (_statPmcCg    != null) _statPmcCg.alpha   = 0f;
-            if (_statScavCg   != null) _statScavCg.alpha  = 0f;
-            if (_xpAmountText != null) _xpAmountText.text = "+0";
-            if (_xpLineCg     != null) _xpLineCg.alpha    = 0f;
-            if (_xpBonusText  != null) _xpBonusText.text  = string.Empty;
-            if (_xpBonusCg    != null) _xpBonusCg.alpha   = 0f;
+            _kickerText.text  = died ? "EXTRACTION FAILED!" : "EXTRACTION COMPLETE";
+            _kickerText.color = Color.clear;
 
-            if (_colDivider != null)
+            _titleText.text  = died ? "You did not make it out." : "You made it out.";
+            _titleText.color = Color.clear;
+
+            _totalText.text  = "₽ 0";
+            _totalText.color = Color.clear;
+
+            _quipText.text = Quips.Pick(stats);
+            _quipCg.alpha  = 0f;
+
+            string map = string.IsNullOrEmpty(stats.MapName) ? "UNKNOWN" : stats.MapName.ToUpperInvariant();
+
+            string time = stats.RaidTime == default ? DateTime.Now.ToString("HH:mm") : stats.RaidTime.ToString("HH:mm");
+            _metaText.text  = $"{map}  ·  {time}  ·  " + (Plugin.ManualDismiss.Value ? "CLICK TO CONTINUE" : "CLICK ANYWHERE TO CLOSE");
+            _metaText.color = Color.clear;
+
+            _watermarkText.text  = map;
+            _watermarkText.color = Color.clear;
+
+            _compareText.text  = BuildComparison(stats) ?? string.Empty;
+            _compareText.color = Color.clear;
+            _compareText.rectTransform.anchoredPosition = new Vector2(BodyLeft, BodyBottom + 14f);
+
+            ResetHero(stats);
+
+            _barTop.sizeDelta    = new Vector2(0f, 0f);
+            _barBottom.sizeDelta = new Vector2(0f, 0f);
+            _rule.sizeDelta      = new Vector2(3f, 0f);
+            _tint.color          = new Color(0.016f, 0.024f, 0.04f, 0f);
+
+            int rowCount = Mathf.Min(stats.TopItems.Count, MaxItemRows);
+            for (int i = 0; i < _itemRows.Count; i++)
             {
-                _colDivider.anchorMax = new Vector2(_colDivider.anchorMax.x, 1f);
-                _colDivider.gameObject.SetActive(false);
+                bool used = i < rowCount;
+                _itemRows[i].Rt.gameObject.SetActive(used);
+                if (!used) continue;
+
+                var (name, value) = stats.TopItems[i];
+                _itemRows[i].Left.text   = name;
+                _itemRows[i].Right.text  = value > 0 ? $"₽{value:N0}" : "-";
+                _itemRows[i].Right.color = ValueTint(value);
+                _itemRows[i].Cg.alpha    = 0f;
             }
 
+            _summaryRow.Left.text  = $"{stats.ItemsFound} items  ·  {stats.PmcKills} PMC  ·  {stats.ScavKills} Scav";
+            _summaryRow.Right.text = stats.XpEarned > 0 ? $"+{stats.XpEarned:N0} XP" : string.Empty;
+            _summaryRow.Cg.alpha   = 0f;
+
+            _bonusRow.Left.text  = string.Empty;
+            _bonusRow.Cg.alpha   = 0f;
+            _bonusRow.Rt.gameObject.SetActive(false);
+
             bool hasFireteam = stats.FireteamMembers != null && stats.FireteamMembers.Count > 0;
-            if (_fireteamSection != null)
+            _fireteamRow.Rt.gameObject.SetActive(hasFireteam);
+            if (hasFireteam)
             {
-                _fireteamSection.SetActive(hasFireteam);
-                if (hasFireteam)
+                var names = new List<string>();
+                foreach (var (n, k) in stats.FireteamMembers)
                 {
-                    int count = Mathf.Min(stats.FireteamMembers.Count, 4);
-                    EnsureFireteamRows(count);
-                    PrepareFireteamRows(stats.FireteamMembers);
+                    names.Add(k > 0 ? $"{n} ({k})" : n);
+                    if (names.Count >= 4) break;
                 }
+                _fireteamRow.Left.text  = "fireteam";
+                _fireteamRow.Right.text = string.Join("  ·  ", names);
+                _fireteamRow.Cg.alpha   = 0f;
             }
 
             if (_progressBarFill != null)
             {
                 _progressBarFill.anchorMax = new Vector2(1f, 1f);
-                _progressBarFill.gameObject.transform.parent.gameObject.SetActive(true);
-            }
-
-            foreach (var r in _itemRows)
-            {
-                r.Cg.alpha = 0f;
-                r.Rt.anchoredPosition = new Vector2(-SlideDistance, r.Rt.anchoredPosition.y);
-            }
-
-            foreach (var r in _fireteamRows)
-            {
-                r.Cg.alpha = 0f;
-                r.Rt.anchoredPosition = new Vector2(r.Rt.anchoredPosition.x, r.Rt.anchoredPosition.y - 12f);
+                _progressBarFill.transform.parent.gameObject.SetActive(!Plugin.ManualDismiss.Value);
             }
 
             if (_videoPlayer != null) { _videoPlayer.Pause(); _videoPlayer.time = 0; }
             if (_videoCg     != null) _videoCg.alpha = 0f;
         }
 
-        private void PrepareItemRows(RaidStats stats)
+        private IEnumerator GrowBars(float dur)
         {
-            int count = Mathf.Min(stats.TopItems.Count, 7);
-            for (int i = 0; i < count; i++)
+            float t = 0f;
+            while (t < dur)
             {
-                var (name, value) = stats.TopItems[i];
-                Color rarityColor = RarityColor(value);
-                string priceStr   = value > 0 ? $"₽{value:N0}" : "-";
-                string rarityHex  = ColorUtility.ToHtmlStringRGB(rarityColor);
-
-                if (i < _itemRows.Count)
-                {
-                    var row = _itemRows[i];
-                    row.Label.text     = $"<color=#{rarityHex}>{name}</color>  <color=#555555>{priceStr}</color>";
-                    row.RankBadge.text = RankLabel(i);
-                    row.RankBg.color   = RankColor(i);
-                    row.AccentBar.color = rarityColor;
-                    row.Cg.alpha = 0f;
-                }
+                t += Time.deltaTime;
+                float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / dur), 3f);
+                float h = BarHeight * p;
+                _barTop.sizeDelta    = new Vector2(0f, h);
+                _barBottom.sizeDelta = new Vector2(0f, h);
+                yield return null;
             }
+            _barTop.sizeDelta    = new Vector2(0f, BarHeight);
+            _barBottom.sizeDelta = new Vector2(0f, BarHeight);
         }
 
-        private void EnsureFireteamRows(int count)
+        private IEnumerator GrowRule(float dur)
         {
-            while (_fireteamRows.Count < count)
-                BuildFireteamRow(_fireteamRows.Count);
-        }
-
-        private void PrepareFireteamRows(List<(string Name, int Kills)> members)
-        {
-            int count = Mathf.Min(members.Count, 4);
-
-            const float gap = 8f;
-            var containerRt = _fireteamContainer as RectTransform;
-            float containerW = containerRt != null ? containerRt.rect.width : 480f;
-            if (containerW <= 0f) containerW = 480f;
-            float cardW = (containerW - gap * (count - 1)) / count;
-
-            for (int i = 0; i < count; i++)
+            float t = 0f;
+            while (t < dur)
             {
-                var (name, kills) = members[i];
-                Color accent = kills >= 3 ? new Color(0.85f, 0.35f, 0.35f)
-                             : kills >= 1 ? new Color(0.55f, 0.65f, 0.55f)
-                             :              new Color(0.35f, 0.35f, 0.35f);
-                Color killColor = kills >= 3 ? new Color(0.91f, 0.54f, 0.54f)
-                                : kills >= 1 ? new Color(0.69f, 0.78f, 0.69f)
-                                :              new Color(0.55f, 0.55f, 0.55f);
-                string killStr = kills == 1 ? "1 KILL" : $"{kills} KILLS";
-
-                var row = _fireteamRows[i];
-                row.Label.text     = name;
-                row.RankBadge.text = killStr;
-                row.RankBadge.color = killColor;
-                row.AccentBar.color = accent;
-                row.Cg.alpha = 0f;
-
-                row.Rt.anchoredPosition = new Vector2(i * (cardW + gap), 0f);
-                row.Rt.sizeDelta = new Vector2(cardW, 60f);
+                t += Time.deltaTime;
+                float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / dur), 3f);
+                _rule.sizeDelta = new Vector2(3f, RuleHeight * p);
+                yield return null;
             }
+            _rule.sizeDelta = new Vector2(3f, RuleHeight);
         }
 
-        private void BuildFireteamRow(int index)
+        private static IEnumerator FadeImage(Graphic img, float targetAlpha, float dur)
         {
-            var row = MakeRect($"TeamCard{index}", _fireteamContainer);
-            var rr  = row.GetComponent<RectTransform>();
-            rr.anchorMin = new Vector2(0f, 1f); rr.anchorMax = new Vector2(0f, 1f);
-            rr.pivot     = new Vector2(0f, 1f);
-            rr.anchoredPosition = Vector2.zero;
-            rr.sizeDelta = new Vector2(120f, 60f);
-
-            var cg = row.AddComponent<CanvasGroup>();
-            cg.alpha = 0f;
-            row.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.025f);
-
-            var accentGo  = MakeRect("Accent", row.transform);
-            var accentRt  = accentGo.GetComponent<RectTransform>();
-            accentRt.anchorMin = Vector2.zero; accentRt.anchorMax = new Vector2(0f, 1f);
-            accentRt.pivot = new Vector2(0f, 0.5f);
-            accentRt.anchoredPosition = Vector2.zero; accentRt.sizeDelta = new Vector2(3f, 0f);
-            var accentImg = accentGo.AddComponent<Image>();
-
-            var nameLabel = MakeTMP($"TeamName{index}", row.transform, 13f, FontStyles.Bold, TextAlignmentOptions.Left);
-            nameLabel.color = new Color(0.89f, 0.89f, 0.89f);
-            nameLabel.enableWordWrapping = false;
-            nameLabel.overflowMode = TextOverflowModes.Ellipsis;
-            var nr = nameLabel.rectTransform;
-            nr.anchorMin = new Vector2(0f, 1f); nr.anchorMax = new Vector2(1f, 1f);
-            nr.pivot = new Vector2(0f, 1f);
-            nr.anchoredPosition = new Vector2(14f, -8f);
-            nr.sizeDelta = new Vector2(-22f, 18f);
-
-            var killsLabel = MakeTMP($"TeamKills{index}", row.transform, 11f, FontStyles.Normal, TextAlignmentOptions.Left);
-            killsLabel.color = new Color(0.55f, 0.55f, 0.55f);
-            killsLabel.characterSpacing = 2f;
-            var kr = killsLabel.rectTransform;
-            kr.anchorMin = new Vector2(0f, 1f); kr.anchorMax = new Vector2(1f, 1f);
-            kr.pivot = new Vector2(0f, 1f);
-            kr.anchoredPosition = new Vector2(14f, -32f);
-            kr.sizeDelta = new Vector2(-22f, 16f);
-
-            _fireteamRows.Add(new ItemRowData
+            Color c = img.color;
+            float t = 0f;
+            while (t < dur)
             {
-                Cg = cg, Rt = rr, Label = nameLabel, RankBadge = killsLabel, RankBg = null, AccentBar = accentImg
-            });
+                t += Time.deltaTime;
+                img.color = new Color(c.r, c.g, c.b, Mathf.Lerp(0f, targetAlpha, t / dur));
+                yield return null;
+            }
+            img.color = new Color(c.r, c.g, c.b, targetAlpha);
         }
 
-        private void RevealRow(int i, double value = 0)
+        private static IEnumerator CountUp(TextMeshProUGUI label, double target, float dur)
         {
-            if (i >= _itemRows.Count) return;
-            var row = _itemRows[i];
-            StartCoroutine(SlideInRow(row, RowSlideDuration));
-
-            if      (value >= 500_000) PlaySound("QuestCompleted",       "RepairComplete");
-            else if (value >= 150_000) PlaySound("MenuInstallModVital",   "RepairComplete");
-            else                       PlaySound("InsuranceItemOnInsure", "ButtonClick");
+            float t = 0f;
+            while (t < dur)
+            {
+                t += Time.deltaTime;
+                float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / dur), 3f);
+                label.text = $"₽ {target * p:N0}";
+                yield return null;
+            }
+            label.text = $"₽ {target:N0}";
         }
 
-        private static IEnumerator SlideUpCard(ItemRowData row, float dur)
+        private static IEnumerator FadeInRow(SideRow row, float dur)
         {
-            var startPos = row.Rt.anchoredPosition;
-            var endPos   = startPos + new Vector2(0f, 12f);
+            var endPos   = row.Rt.anchoredPosition;
+            var startPos = endPos + new Vector2(14f, 0f);
             float t = 0f;
             while (t < dur)
             {
                 t += Time.deltaTime;
                 float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / dur), 3f);
                 row.Rt.anchoredPosition = Vector2.Lerp(startPos, endPos, p);
-                row.Cg.alpha = Mathf.Clamp01(t / dur * 2f);
+                row.Cg.alpha = Mathf.Clamp01(t / dur * 1.6f);
                 yield return null;
             }
             row.Rt.anchoredPosition = endPos;
             row.Cg.alpha = 1f;
         }
 
-        private static IEnumerator SlideInRow(ItemRowData row, float dur)
+        private static IEnumerator RiseText(TextMeshProUGUI label, Color target, float rise, float dur)
         {
-            var startPos = row.Rt.anchoredPosition;
-            var endPos   = startPos + new Vector2(SlideDistance, 0f);
-            float t = 0f;
-            while (t < dur)
-            {
-                t += Time.deltaTime;
-                float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / dur), 3f);
-                row.Rt.anchoredPosition = Vector2.Lerp(startPos, endPos, p);
-                row.Cg.alpha = Mathf.Clamp01(t / dur * 2f);
-                yield return null;
-            }
-            row.Rt.anchoredPosition = endPos;
-            row.Cg.alpha = 1f;
-        }
-
-        private static IEnumerator SlideInText(TextMeshProUGUI label, float slideAmt, float dur)
-        {
-            var rt       = label.rectTransform;
-            var startPos = rt.anchoredPosition - new Vector2(0f, slideAmt);
+            var rt = label.rectTransform;
+            var endPos   = rt.anchoredPosition;
+            var startPos = endPos - new Vector2(0f, rise);
             rt.anchoredPosition = startPos;
-            Color target = new Color(label.color.r, label.color.g, label.color.b);
-            label.color = new Color(target.r, target.g, target.b, 0f);
             float t = 0f;
             while (t < dur)
             {
                 t += Time.deltaTime;
                 float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / dur), 3f);
-                rt.anchoredPosition = Vector2.Lerp(startPos, startPos + new Vector2(0f, slideAmt), p);
-                label.color = new Color(target.r, target.g, target.b, Mathf.Clamp01(t / dur * 1.5f));
+                rt.anchoredPosition = Vector2.Lerp(startPos, endPos, p);
+                label.color = new Color(target.r, target.g, target.b, Mathf.Clamp01(t / dur * 1.4f));
                 yield return null;
             }
-            rt.anchoredPosition = startPos + new Vector2(0f, slideAmt);
+            rt.anchoredPosition = endPos;
             label.color = target;
-        }
-
-        private static IEnumerator FadeInCanvasGroup(CanvasGroup cg, float dur)
-        {
-            float t = 0f;
-            while (t < dur) { t += Time.deltaTime; cg.alpha = Mathf.Clamp01(t / dur); yield return null; }
-            cg.alpha = 1f;
         }
 
         private static IEnumerator FadeText(TextMeshProUGUI label, Color target, float dur)
@@ -715,96 +573,295 @@ namespace LootNet.UI
             label.color = target;
         }
 
-        private static IEnumerator PulseScale(RectTransform rt, float peakScale, float dur)
+        private static IEnumerator FadeCanvasGroup(CanvasGroup cg, float dur)
         {
             float t = 0f;
-            while (t < dur)
-            {
-                t += Time.deltaTime;
-                float p = Mathf.Sin(Mathf.Clamp01(t / dur) * Mathf.PI);
-                rt.localScale = Vector3.one * Mathf.Lerp(1f, peakScale, p);
-                yield return null;
-            }
-            rt.localScale = Vector3.one;
+            while (t < dur) { t += Time.deltaTime; cg.alpha = Mathf.Clamp01(t / dur); yield return null; }
+            cg.alpha = 1f;
         }
 
-        private static IEnumerator PulseRing(Image ring, float dur)
+        private void BuildUI()
         {
-            ring.gameObject.SetActive(true);
-            float t = 0f;
-            while (t < dur)
-            {
-                t += Time.deltaTime;
-                float p = t / dur;
-                ring.rectTransform.localScale = Vector3.one * Mathf.Lerp(0.5f, 2.2f, p);
-                ring.color = new Color(1f, 0.84f, 0f, Mathf.Lerp(0.6f, 0f, p));
-                yield return null;
-            }
-            ring.gameObject.SetActive(false);
+            var canvas = gameObject.GetComponent<Canvas>() ?? gameObject.AddComponent<Canvas>();
+            canvas.renderMode   = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 500;
+
+            var scaler = gameObject.GetComponent<CanvasScaler>() ?? gameObject.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode         = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.screenMatchMode     = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            scaler.matchWidthOrHeight  = 0.5f;
+
+            if (!gameObject.GetComponent<GraphicRaycaster>()) gameObject.AddComponent<GraphicRaycaster>();
+            _canvasGroup = gameObject.GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
+
+            _root = MakeRect("SummaryRoot", transform);
+            Stretch(_root.GetComponent<RectTransform>());
+
+            var screenshotGo = MakeRect("Screenshot", _root.transform);
+            Stretch(screenshotGo.GetComponent<RectTransform>());
+            _bgImage = screenshotGo.AddComponent<RawImage>();
+            _bgImage.color = new Color(0.80f, 0.84f, 0.95f, 1f);
+
+            _scrimTexture = BuildScrimTexture();
+            var tintGo = MakeRect("Tint", _root.transform);
+            Stretch(tintGo.GetComponent<RectTransform>());
+            _tint = tintGo.AddComponent<RawImage>();
+            _tint.texture = _scrimTexture;
+            _tint.color = new Color(0.016f, 0.024f, 0.04f, 0f);
+
+            _vignetteTexture = BuildVignetteTexture();
+            var vigGo = MakeRect("Vignette", _root.transform);
+            Stretch(vigGo.GetComponent<RectTransform>());
+            var vigImg = vigGo.AddComponent<RawImage>();
+            vigImg.texture = _vignetteTexture;
+            vigImg.color   = new Color(1f, 1f, 1f, 0.38f);
+
+            BuildWatermark();
+
+            _barTop    = MakeBar("BarTop",    new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f));
+            _barBottom = MakeBar("BarBottom", new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f));
+
+            var ruleGo = MakeRect("Rule", _root.transform);
+            _rule = ruleGo.GetComponent<RectTransform>();
+            _rule.anchorMin = Vector2.zero; _rule.anchorMax = Vector2.zero;
+            _rule.pivot = new Vector2(0f, 0f);
+            _rule.anchoredPosition = new Vector2(RuleLeft, BodyBottom);
+            _rule.sizeDelta = new Vector2(3f, 0f);
+            ruleGo.AddComponent<Image>().color = new Color(1f, 0.84f, 0f, 0.9f);
+
+            _kickerText = MakeBodyLabel("Kicker", 15f, FontStyles.Normal, BodyBottom + RuleHeight - 24f, 22f);
+            _kickerText.characterSpacing = 8f;
+
+            _titleText = MakeBodyLabel("Title", 48f, FontStyles.Normal, BodyBottom + 104f, 62f);
+            AddSoftShadow(_titleText);
+
+            _totalText = MakeBodyLabel("Total", 74f, FontStyles.Normal, BodyBottom, 90f);
+            _totalText.characterSpacing = 1f;
+            AddSoftShadow(_totalText);
+
+            var quipGo = MakeRect("Quip", _root.transform);
+            var quipRt = quipGo.GetComponent<RectTransform>();
+            quipRt.anchorMin = Vector2.zero; quipRt.anchorMax = new Vector2(1f, 0f);
+            quipRt.pivot = new Vector2(0f, 1f);
+            quipRt.anchoredPosition = new Vector2(BodyLeft, BodyBottom - 12f);
+            quipRt.sizeDelta = new Vector2(-(BodyLeft + 700f), 34f);
+            _quipCg = quipGo.AddComponent<CanvasGroup>();
+            _quipCg.alpha = 0f;
+
+            _quipText = MakeTMP("QuipText", quipGo.transform, 22f, FontStyles.Italic, TextAlignmentOptions.TopLeft);
+            _quipText.color = new Color(0.66f, 0.66f, 0.66f);
+            _quipText.enableWordWrapping = false;
+            Stretch(_quipText.rectTransform);
+
+            _metaText = MakeBodyLabel("Meta", 13f, FontStyles.Normal, 66f, 20f);
+            _metaText.characterSpacing = 5f;
+
+            var colGo = MakeRect("SideColumn", _root.transform);
+            _sideColumn = colGo.GetComponent<RectTransform>();
+            _sideColumn.anchorMin = new Vector2(1f, 0f); _sideColumn.anchorMax = new Vector2(1f, 0f);
+            _sideColumn.pivot     = new Vector2(1f, 0f);
+            _sideColumn.anchoredPosition = new Vector2(-BodyLeft, BodyBottom);
+            _sideColumn.sizeDelta = new Vector2(620f, 320f);
+
+            for (int i = 0; i < MaxItemRows; i++)
+                _itemRows.Add(BuildSideRow($"Item{i}", -i * RowHeight, 20f, 20f, new Color(0.82f, 0.82f, 0.82f), Color.white));
+
+            AddHairline(_sideColumn, -(MaxItemRows * RowHeight) - 14f);
+
+            _summaryRow  = BuildSideRow("Summary", -(MaxItemRows * RowHeight) - 30f, 17f, 19f,
+                                        new Color(0.6f, 0.6f, 0.6f), new Color(0.85f, 0.72f, 0.25f));
+            _bonusRow    = BuildSideRow("Bonus", -(MaxItemRows * RowHeight) - 58f, 14f, 14f,
+                                        new Color(0.45f, 0.55f, 0.45f), new Color(0.45f, 0.55f, 0.45f));
+            _fireteamRow = BuildSideRow("Fireteam", -(MaxItemRows * RowHeight) - 88f, 14f, 14f,
+                                        new Color(0.42f, 0.42f, 0.42f), new Color(0.62f, 0.62f, 0.62f));
+
+            BuildCompareLine();
+            BuildHero();
+
+            var progTrack = MakeRect("ProgressTrack", _root.transform);
+            var ptRt = progTrack.GetComponent<RectTransform>();
+            ptRt.anchorMin = new Vector2(0f, 0f); ptRt.anchorMax = new Vector2(1f, 0f);
+            ptRt.pivot = new Vector2(0.5f, 0f);
+            ptRt.anchoredPosition = Vector2.zero; ptRt.sizeDelta = new Vector2(0f, 2f);
+            progTrack.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.06f);
+
+            var progFillGo = MakeRect("ProgressFill", progTrack.transform);
+            _progressBarFill = progFillGo.GetComponent<RectTransform>();
+            _progressBarFill.anchorMin = Vector2.zero; _progressBarFill.anchorMax = Vector2.one;
+            _progressBarFill.sizeDelta = Vector2.zero; _progressBarFill.anchoredPosition = Vector2.zero;
+            _progressBarFill.pivot = new Vector2(0f, 0.5f);
+            progFillGo.AddComponent<Image>().color = new Color(1f, 0.84f, 0f, 0.45f);
+
+            BuildVideoPanel();
+
+            // Nothing else may eat clicks: the catcher goes on top and everything
+            // underneath stops being a raycast target.
+            foreach (var g in _root.GetComponentsInChildren<Graphic>(true))
+                g.raycastTarget = false;
+
+            var clickGo = MakeRect("ClickCatcher", _root.transform);
+            Stretch(clickGo.GetComponent<RectTransform>());
+            var clickImg = clickGo.AddComponent<Image>();
+            clickImg.color = Color.clear;
+            clickImg.raycastTarget = true;
+            var btn = clickGo.AddComponent<Button>();
+            btn.transition = Selectable.Transition.None;
+            btn.onClick.AddListener(Hide);
+            clickGo.transform.SetAsLastSibling();
+
+            _canvasGroup.alpha = 0f;
+            _root.SetActive(false);
         }
 
-        private static IEnumerator ShakePanel(RectTransform rt, float dur, float magnitude)
+        /// Map name as a ghosted title-card watermark. Auto-sizes down so a long map name
+        /// never runs under the hero block on the right.
+        private void BuildWatermark()
         {
-            Vector2 origin = rt.anchoredPosition;
-            float t = 0f;
-            while (t < dur)
-            {
-                t += Time.deltaTime;
-                float decay = 1f - Mathf.Clamp01(t / dur);
-                float dx = (UnityEngine.Random.value - 0.5f) * 2f * magnitude * decay;
-                float dy = (UnityEngine.Random.value - 0.5f) * 2f * magnitude * decay;
-                rt.anchoredPosition = origin + new Vector2(dx, dy);
-                yield return null;
-            }
-            rt.anchoredPosition = origin;
+            _watermarkText = MakeTMP("Watermark", _root.transform, 150f, FontStyles.Normal, TextAlignmentOptions.BottomLeft);
+            _watermarkText.color = Color.clear;
+            _watermarkText.enableWordWrapping = false;
+            _watermarkText.characterSpacing   = 14f;
+            _watermarkText.enableAutoSizing   = true;
+            _watermarkText.fontSizeMin        = 60f;
+            _watermarkText.fontSizeMax        = 150f;
+
+            var rt = _watermarkText.rectTransform;
+            rt.anchorMin = Vector2.zero; rt.anchorMax = new Vector2(1f, 0f);
+            rt.pivot = new Vector2(0f, 0f);
+            rt.anchoredPosition = new Vector2(BodyLeft - 6f, UpperBandY);
+            rt.sizeDelta = new Vector2(-(BodyLeft + 700f), 180f);
         }
 
-        private static IEnumerator FlashTitle(TextMeshProUGUI label, Color baseColor)
+        private void BuildCompareLine()
         {
-            float dur  = 0.45f;
-            float t    = 0f;
-            while (t < dur)
-            {
-                t += Time.deltaTime;
-                float p     = t / dur;
-                float flash = p < 0.25f ? p / 0.25f : Mathf.Pow(1f - (p - 0.25f) / 0.75f, 2f);
-                label.color = Color.Lerp(baseColor, Color.white, flash * 0.75f);
-                yield return null;
-            }
-            label.color = baseColor;
+            _compareText = MakeTMP("Compare", _root.transform, 16f, FontStyles.Normal, TextAlignmentOptions.BottomLeft);
+            _compareText.color = Color.clear;
+            _compareText.enableWordWrapping = false;
+            _compareText.characterSpacing   = 4f;
+
+            var rt = _compareText.rectTransform;
+            rt.anchorMin = Vector2.zero; rt.anchorMax = new Vector2(1f, 0f);
+            rt.pivot = new Vector2(0f, 0f);
+            rt.anchoredPosition = new Vector2(BodyLeft, BodyBottom + 14f);   // x is set once the total stops counting
+            rt.sizeDelta = new Vector2(-(BodyLeft + 620f), 24f);
         }
 
-        private IEnumerator AnimateScanLine()
+        /// The single best find, given the icon treatment, opposite the watermark.
+        private void BuildHero()
         {
-            if (_scanLine == null) yield break;
-            var rt = _scanLine.rectTransform;
-            while (_visible)
-            {
-                float t = 0f;
-                const float sweep = 3f;
-                while (t < sweep && _visible)
-                {
-                    t += Time.deltaTime;
-                    float p = t / sweep;
-                    rt.anchorMin = new Vector2(0f, 1f - p);
-                    rt.anchorMax = new Vector2(1f, 1f - p);
-                    _scanLine.color = new Color(1f, 1f, 1f, 0.025f * Mathf.Sin(p * Mathf.PI));
-                    yield return null;
-                }
-                yield return new WaitForSeconds(1.5f);
-            }
+            var go = MakeRect("Hero", _root.transform);
+            _heroRoot = go.GetComponent<RectTransform>();
+            _heroRoot.anchorMin = new Vector2(1f, 0f); _heroRoot.anchorMax = new Vector2(1f, 0f);
+            _heroRoot.pivot     = new Vector2(1f, 0f);
+            _heroRoot.anchoredPosition = new Vector2(-BodyLeft, UpperBandY);
+            _heroRoot.sizeDelta = new Vector2(460f, HeroSize);
+            _heroCg = go.AddComponent<CanvasGroup>();
+            _heroCg.alpha = 0f;
+
+            var iconGo = MakeRect("HeroIcon", go.transform);
+            var iconRt = iconGo.GetComponent<RectTransform>();
+            iconRt.anchorMin = new Vector2(1f, 0.5f); iconRt.anchorMax = new Vector2(1f, 0.5f);
+            iconRt.pivot     = new Vector2(1f, 0.5f);
+            iconRt.anchoredPosition = Vector2.zero;
+            iconRt.sizeDelta = new Vector2(HeroSize, HeroSize);
+            _heroIcon = iconGo.AddComponent<Image>();
+            _heroIcon.preserveAspect = true;
+            _heroIcon.enabled = false;
+
+            var label = MakeTMP("HeroLabel", go.transform, 12f, FontStyles.Normal, TextAlignmentOptions.TopRight);
+            label.text = "TOP FIND";
+            label.color = new Color(0.42f, 0.42f, 0.42f);
+            label.characterSpacing = 6f;
+            label.enableWordWrapping = false;
+            var lrt = label.rectTransform;
+            lrt.anchorMin = new Vector2(0f, 1f); lrt.anchorMax = new Vector2(1f, 1f);
+            lrt.pivot = new Vector2(0f, 1f);
+            lrt.anchoredPosition = new Vector2(0f, -18f);
+            lrt.sizeDelta = new Vector2(-(HeroSize + 22f), 18f);
+
+            _heroName = MakeTMP("HeroName", go.transform, 23f, FontStyles.Normal, TextAlignmentOptions.TopRight);
+            _heroName.color = new Color(0.88f, 0.88f, 0.88f);
+            _heroName.enableWordWrapping = false;
+            _heroName.overflowMode = TextOverflowModes.Ellipsis;
+            var nrt = _heroName.rectTransform;
+            nrt.anchorMin = new Vector2(0f, 1f); nrt.anchorMax = new Vector2(1f, 1f);
+            nrt.pivot = new Vector2(0f, 1f);
+            nrt.anchoredPosition = new Vector2(0f, -46f);
+            nrt.sizeDelta = new Vector2(-(HeroSize + 22f), 30f);
+
+            _heroValue = MakeTMP("HeroValue", go.transform, 21f, FontStyles.Normal, TextAlignmentOptions.TopRight);
+            _heroValue.enableWordWrapping = false;
+            var vrt = _heroValue.rectTransform;
+            vrt.anchorMin = new Vector2(0f, 1f); vrt.anchorMax = new Vector2(1f, 1f);
+            vrt.pivot = new Vector2(0f, 1f);
+            vrt.anchoredPosition = new Vector2(0f, -80f);
+            vrt.sizeDelta = new Vector2(-(HeroSize + 22f), 28f);
         }
 
-        private static void PlaySound(string soundName, string fallback = null)
+        private RectTransform MakeBar(string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot)
         {
-            try
-            {
-                var gs = Singleton<GUISounds>.Instance;
-                if (gs == null) return;
-                if (Enum.TryParse(soundName, out EUISoundType s))  { gs.PlayUISound(s); return; }
-                if (fallback != null && Enum.TryParse(fallback, out EUISoundType f)) gs.PlayUISound(f);
-            }
-            catch { }
+            var go = MakeRect(name, _root.transform);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = anchorMin; rt.anchorMax = anchorMax; rt.pivot = pivot;
+            rt.anchoredPosition = Vector2.zero;
+            rt.sizeDelta = new Vector2(0f, 0f);
+            go.AddComponent<Image>().color = Color.black;
+            return rt;
+        }
+
+        private TextMeshProUGUI MakeBodyLabel(string name, float size, FontStyles style, float bottomY, float height)
+        {
+            var label = MakeTMP(name, _root.transform, size, style, TextAlignmentOptions.BottomLeft);
+            label.color = Color.clear;
+            label.enableWordWrapping = false;
+            var rt = label.rectTransform;
+            rt.anchorMin = Vector2.zero; rt.anchorMax = new Vector2(1f, 0f);
+            rt.pivot = new Vector2(0f, 0f);
+            rt.anchoredPosition = new Vector2(BodyLeft, bottomY);
+            rt.sizeDelta = new Vector2(-(BodyLeft + 700f), height);
+            return label;
+        }
+
+        private SideRow BuildSideRow(string name, float topOffset, float leftSize, float rightSize, Color leftColor, Color rightColor)
+        {
+            var go = MakeRect($"Row_{name}", _sideColumn);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0f, 1f); rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.anchoredPosition = new Vector2(0f, topOffset);
+            rt.sizeDelta = new Vector2(0f, RowHeight - 4f);
+
+            var cg = go.AddComponent<CanvasGroup>();
+            cg.alpha = 0f;
+
+            var left = MakeTMP("L", go.transform, leftSize, FontStyles.Normal, TextAlignmentOptions.MidlineLeft);
+            left.color = leftColor;
+            left.enableWordWrapping = false;
+            left.overflowMode = TextOverflowModes.Ellipsis;
+            var lr = left.rectTransform;
+            lr.anchorMin = Vector2.zero; lr.anchorMax = new Vector2(0.62f, 1f);
+            lr.offsetMin = Vector2.zero; lr.offsetMax = Vector2.zero;
+
+            var right = MakeTMP("R", go.transform, rightSize, FontStyles.Normal, TextAlignmentOptions.MidlineRight);
+            right.color = rightColor;
+            right.enableWordWrapping = false;
+            var rr = right.rectTransform;
+            rr.anchorMin = new Vector2(0.62f, 0f); rr.anchorMax = Vector2.one;
+            rr.offsetMin = Vector2.zero; rr.offsetMax = Vector2.zero;
+
+            return new SideRow { Cg = cg, Rt = rt, Left = left, Right = right };
+        }
+
+        private static void AddHairline(Transform parent, float topOffset)
+        {
+            var go = MakeRect("Hairline", parent);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0f, 1f); rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.anchoredPosition = new Vector2(0f, topOffset);
+            rt.sizeDelta = new Vector2(0f, 1f);
+            go.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.09f);
         }
 
         private void BuildVideoPanel()
@@ -823,7 +880,7 @@ namespace LootNet.UI
             rt.anchorMin = new Vector2(1f, 0f);
             rt.anchorMax = new Vector2(1f, 0f);
             rt.pivot     = new Vector2(1f, 0f);
-            rt.anchoredPosition = new Vector2(-24f, 24f);
+            rt.anchoredPosition = new Vector2(-BodyLeft, BarHeight + 40f);
             rt.sizeDelta = new Vector2(VideoMaxWidth, VideoMaxWidth * 9f / 16f);
 
             _videoCg = _videoPanel.AddComponent<CanvasGroup>();
@@ -875,7 +932,7 @@ namespace LootNet.UI
             _videoPlayer.targetTexture = _videoRenderTexture;
             _videoImage.texture        = _videoRenderTexture;
 
-            yield return StartCoroutine(FadeInCanvasGroup(_videoCg, 0.6f));
+            yield return StartCoroutine(FadeCanvasGroup(_videoCg, 0.6f));
 
             bool ended = false;
             _videoPlayer.loopPointReached += _ => ended = true;
@@ -889,372 +946,8 @@ namespace LootNet.UI
         {
             if (_videoRenderTexture != null) Destroy(_videoRenderTexture);
             if (_vignetteTexture    != null) Destroy(_vignetteTexture);
-        }
-
-        private void BuildUI()
-        {
-            var canvas = gameObject.GetComponent<Canvas>() ?? gameObject.AddComponent<Canvas>();
-            canvas.renderMode   = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = 500;
-            if (!gameObject.GetComponent<CanvasScaler>())     gameObject.AddComponent<CanvasScaler>();
-            if (!gameObject.GetComponent<GraphicRaycaster>()) gameObject.AddComponent<GraphicRaycaster>();
-            _canvasGroup = gameObject.GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
-
-            _root = MakeRect("SummaryRoot", transform);
-            Stretch(_root.GetComponent<RectTransform>());
-
-            var screenshotGo = MakeRect("Screenshot", _root.transform);
-            Stretch(screenshotGo.GetComponent<RectTransform>());
-            _bgImage = screenshotGo.AddComponent<RawImage>();
-            _bgImage.color = new Color(1f, 1f, 1f, 0.35f);
-
-            var overlay = MakeRect("Overlay", _root.transform);
-            Stretch(overlay.GetComponent<RectTransform>());
-            overlay.AddComponent<Image>().color = new Color(0.01f, 0.01f, 0.03f, 0.82f);
-
-            _vignetteTexture = BuildVignetteTexture();
-            var vigGo = MakeRect("Vignette", _root.transform);
-            Stretch(vigGo.GetComponent<RectTransform>());
-            var vigImg = vigGo.AddComponent<RawImage>();
-            vigImg.texture = _vignetteTexture;
-            vigImg.color   = new Color(1f, 1f, 1f, 0.9f);
-
-            var scanGo = MakeRect("ScanLine", _root.transform);
-            var scanRt = scanGo.GetComponent<RectTransform>();
-            scanRt.anchorMin = new Vector2(0f, 1f); scanRt.anchorMax = new Vector2(1f, 1f);
-            scanRt.pivot = Vector2.up; scanRt.sizeDelta = new Vector2(0f, 3f);
-            _scanLine = scanGo.AddComponent<Image>();
-            _scanLine.color = Color.clear;
-
-            var clickGo = MakeRect("ClickCatcher", _root.transform);
-            Stretch(clickGo.GetComponent<RectTransform>());
-            clickGo.AddComponent<Image>().color = Color.clear;
-            var btn = clickGo.AddComponent<Button>();
-            btn.transition = Selectable.Transition.None;
-            btn.onClick.AddListener(Hide);
-
-            MakeAccentBar("TopAccent", _root.transform, new Vector2(0f, 1f), new Vector2(1f, 1f), 4f, new Color(1f, 0.84f, 0f, 1f));
-            MakeAccentBar("BotAccent", _root.transform, new Vector2(0f, 0f), new Vector2(1f, 0f), 2f, new Color(1f, 0.84f, 0f, 0.35f));
-
-            const float PanelW  = 1160f;
-            const float PanelH  = 700f;
-
-            var panelGo = MakeRect("Panel", _root.transform);
-            _panel = panelGo.GetComponent<RectTransform>();
-            _panel.anchorMin = new Vector2(0.5f, 0.5f); _panel.anchorMax = new Vector2(0.5f, 0.5f);
-            _panel.pivot     = new Vector2(0.5f, 0.5f);
-            _panel.anchoredPosition = Vector2.zero;
-            _panel.sizeDelta = new Vector2(PanelW, PanelH);
-
-            panelGo.AddComponent<Image>().color = new Color(0.04f, 0.04f, 0.07f, 0.92f);
-
-            var stripe   = MakeRect("LeftStripe", panelGo.transform);
-            var stripeRt = stripe.GetComponent<RectTransform>();
-            stripeRt.anchorMin = Vector2.zero; stripeRt.anchorMax = new Vector2(0f, 1f);
-            stripeRt.pivot = new Vector2(0f, 0.5f);
-            stripeRt.anchoredPosition = Vector2.zero; stripeRt.sizeDelta = new Vector2(4f, 0f);
-            stripe.AddComponent<Image>().color = new Color(1f, 0.84f, 0f, 1f);
-
-            const float HeaderH = 140f;
-
-            _titleText = MakeTMP("Title", panelGo.transform, 52f, FontStyles.Bold, TextAlignmentOptions.Center);
-            _titleText.color = new Color(1f, 0.84f, 0f, 0f);
-            _titleText.characterSpacing = 10f;
-            PlaceLabel(_titleText.rectTransform, -32f, 72f);
-
-            _subtitleText = MakeTMP("Subtitle", panelGo.transform, 13f, FontStyles.Normal, TextAlignmentOptions.Center);
-            _subtitleText.color = new Color(0.55f, 0.55f, 0.55f, 0f);
-            _subtitleText.characterSpacing = 5f;
-            PlaceLabel(_subtitleText.rectTransform, -98f, 22f);
-
-            AddHRule(panelGo.transform, -HeaderH, new Color(1f, 0.84f, 0f, 0.3f));
-
-            var divGo = MakeRect("ColDivider", panelGo.transform);
-            _colDivider = divGo.GetComponent<RectTransform>();
-            _colDivider.anchorMin = new Vector2(0.5f, 0f);
-            _colDivider.anchorMax = new Vector2(0.5f, 1f);
-            _colDivider.pivot     = new Vector2(0.5f, 1f);
-            _colDivider.offsetMin = new Vector2(-1f, 0f);
-            _colDivider.offsetMax = new Vector2( 1f, -HeaderH);
-            divGo.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.07f);
-            divGo.SetActive(false);
-
-            const float ColPad = 48f;
-            const float BodyTop = -HeaderH - 8f;
-
-            _valueText = MakeTMP("Value", panelGo.transform, 72f, FontStyles.Bold, TextAlignmentOptions.Left);
-            _valueText.color = Color.clear;
-            var vrt = _valueText.rectTransform;
-            vrt.anchorMin = new Vector2(0f, 1f); vrt.anchorMax = new Vector2(0.5f, 1f);
-            vrt.pivot = new Vector2(0f, 1f);
-            vrt.anchoredPosition = new Vector2(ColPad, BodyTop - 20f);
-            vrt.sizeDelta = new Vector2(-ColPad, 90f);
-
-            var ringGo = MakeRect("PulseRing", panelGo.transform);
-            var ringRt = ringGo.GetComponent<RectTransform>();
-            ringRt.anchorMin = new Vector2(0f, 1f); ringRt.anchorMax = new Vector2(0.5f, 1f);
-            ringRt.pivot = new Vector2(0f, 1f);
-            ringRt.anchoredPosition = new Vector2(ColPad + 20f, BodyTop - 30f);
-            ringRt.sizeDelta = new Vector2(280f, 80f);
-            _valuePulseRing = ringGo.AddComponent<Image>();
-            _valuePulseRing.color = Color.clear;
-            ringGo.SetActive(false);
-
-            var valLabel = MakeTMP("ValueLabel", panelGo.transform, 10f, FontStyles.Normal, TextAlignmentOptions.Left);
-            valLabel.text  = "TOTAL VALUE EXTRACTED";
-            valLabel.color = new Color(0.3f, 0.3f, 0.3f, 1f);
-            valLabel.characterSpacing = 3f;
-            var vlRt = valLabel.rectTransform;
-            vlRt.anchorMin = new Vector2(0f, 1f); vlRt.anchorMax = new Vector2(0.5f, 1f);
-            vlRt.pivot = new Vector2(0f, 1f);
-            vlRt.anchoredPosition = new Vector2(ColPad, BodyTop - 112f);
-            vlRt.sizeDelta = new Vector2(-ColPad, 18f);
-
-            float statY = BodyTop - 180f;
-            BuildStatRow(panelGo.transform, "items looted", new Color(1f, 0.84f, 0f),         ColPad, statY,         out _statItemsNum, out _statItemsCg, new Color(1f, 0.84f, 0f));
-            BuildStatRow(panelGo.transform, "PMC kills",    new Color(1f, 0.27f, 0.27f),       ColPad, statY - 64f,   out _statPmcNum,   out _statPmcCg,   new Color(1f, 0.27f, 0.27f));
-            BuildStatRow(panelGo.transform, "scav kills",   new Color(0.55f, 0.55f, 0.55f),    ColPad, statY - 128f,  out _statScavNum,  out _statScavCg,  new Color(0.55f, 0.55f, 0.55f));
-
-            var xpLineGo = MakeRect("XpLine", panelGo.transform);
-            var xpLineRt = xpLineGo.GetComponent<RectTransform>();
-            xpLineRt.anchorMin = new Vector2(0f, 1f); xpLineRt.anchorMax = new Vector2(0.5f, 1f);
-            xpLineRt.pivot = new Vector2(0f, 1f);
-            xpLineRt.anchoredPosition = new Vector2(ColPad, BodyTop - 134f);
-            xpLineRt.sizeDelta = new Vector2(-ColPad, 30f);
-            _xpLineCg = xpLineGo.AddComponent<CanvasGroup>();
-            _xpLineCg.alpha = 0f;
-
-            var hLayout = xpLineGo.AddComponent<UnityEngine.UI.HorizontalLayoutGroup>();
-            hLayout.childAlignment = TextAnchor.LowerLeft;
-            hLayout.spacing = 8f;
-            hLayout.childForceExpandWidth = false;
-            hLayout.childForceExpandHeight = false;
-            hLayout.childControlWidth = true;
-            hLayout.childControlHeight = true;
-
-            _xpAmountText = MakeTMP("XpAmount", xpLineGo.transform, 26f, FontStyles.Bold, TextAlignmentOptions.BottomLeft);
-            _xpAmountText.color = new Color(0.40f, 0.85f, 1f);
-            _xpAmountText.enableWordWrapping = false;
-            var xaFitter = _xpAmountText.gameObject.AddComponent<UnityEngine.UI.ContentSizeFitter>();
-            xaFitter.horizontalFit = UnityEngine.UI.ContentSizeFitter.FitMode.PreferredSize;
-            xaFitter.verticalFit   = UnityEngine.UI.ContentSizeFitter.FitMode.PreferredSize;
-
-            _xpLabelText = MakeTMP("XpLabel", xpLineGo.transform, 10f, FontStyles.Normal, TextAlignmentOptions.BottomLeft);
-            _xpLabelText.text = "XP EARNED";
-            _xpLabelText.color = new Color(0.3f, 0.3f, 0.3f, 1f);
-            _xpLabelText.characterSpacing = 3f;
-            _xpLabelText.enableWordWrapping = false;
-            var xlFitter = _xpLabelText.gameObject.AddComponent<UnityEngine.UI.ContentSizeFitter>();
-            xlFitter.horizontalFit = UnityEngine.UI.ContentSizeFitter.FitMode.PreferredSize;
-            xlFitter.verticalFit   = UnityEngine.UI.ContentSizeFitter.FitMode.PreferredSize;
-
-            var xpBonusGo = MakeRect("XpBonus", panelGo.transform);
-            var xpBonusRt = xpBonusGo.GetComponent<RectTransform>();
-            xpBonusRt.anchorMin = new Vector2(0f, 1f); xpBonusRt.anchorMax = new Vector2(0.5f, 1f);
-            xpBonusRt.pivot = new Vector2(0f, 1f);
-            xpBonusRt.anchoredPosition = new Vector2(ColPad, BodyTop - 162f);
-            xpBonusRt.sizeDelta = new Vector2(-ColPad, 16f);
-            _xpBonusCg = xpBonusGo.AddComponent<CanvasGroup>();
-            _xpBonusCg.alpha = 0f;
-
-            _xpBonusText = MakeTMP("XpBonusText", xpBonusGo.transform, 11f, FontStyles.Bold, TextAlignmentOptions.Left);
-            _xpBonusText.color = new Color(0.55f, 0.85f, 0.55f);
-            _xpBonusText.characterSpacing = 2f;
-            _xpBonusText.enableWordWrapping = false;
-            Stretch(_xpBonusText.rectTransform);
-
-            var hdr = MakeTMP("TopFindsHeader", panelGo.transform, 11f, FontStyles.Bold, TextAlignmentOptions.Center);
-            hdr.text = "TOP FINDS";
-            hdr.color = new Color(0.35f, 0.35f, 0.35f, 1f);
-            hdr.characterSpacing = 4f;
-            var hdrRt = hdr.rectTransform;
-            hdrRt.anchorMin = new Vector2(0.5f, 1f); hdrRt.anchorMax = new Vector2(1f, 1f);
-            hdrRt.pivot = new Vector2(0.5f, 1f);
-            hdrRt.anchoredPosition = new Vector2(0f, BodyTop - 14f);
-            hdrRt.sizeDelta = new Vector2(0f, 18f);
-
-            var tcGo = MakeRect("TopItemsContainer", panelGo.transform);
-            var tcRt = tcGo.GetComponent<RectTransform>();
-            tcRt.anchorMin = new Vector2(0.5f, 1f); tcRt.anchorMax = new Vector2(1f, 1f);
-            tcRt.pivot = new Vector2(0.5f, 1f);
-            tcRt.anchoredPosition = new Vector2(0f, BodyTop - 40f);
-            tcRt.sizeDelta = new Vector2(-16f, RowHeight * 7f);
-            _topItemsContainer = tcGo.transform;
-
-            for (int i = 0; i < 7; i++)
-                BuildItemRow(i);
-
-            float teamY = statY - 128f - 60f - 28f;
-            _fireteamSection = MakeRect("TeamSection", panelGo.transform);
-            var fsSectionRt = _fireteamSection.GetComponent<RectTransform>();
-            fsSectionRt.anchorMin = new Vector2(0f, 1f); fsSectionRt.anchorMax = new Vector2(0.5f, 1f);
-            fsSectionRt.pivot     = new Vector2(0f, 1f);
-            fsSectionRt.anchoredPosition = new Vector2(ColPad, teamY);
-            fsSectionRt.sizeDelta = new Vector2(-(ColPad + 8f), 90f);
-
-            var teamHdr = MakeTMP("TeamHeader", _fireteamSection.transform, 10f, FontStyles.Bold, TextAlignmentOptions.Left);
-            teamHdr.text = "TEAMMATES"; teamHdr.color = new Color(0.3f, 0.3f, 0.3f, 1f);
-            teamHdr.characterSpacing = 3f;
-            var thRt = teamHdr.rectTransform;
-            thRt.anchorMin = new Vector2(0f, 1f); thRt.anchorMax = new Vector2(1f, 1f);
-            thRt.pivot = new Vector2(0f, 1f);
-            thRt.anchoredPosition = new Vector2(0f, 0f); thRt.sizeDelta = new Vector2(0f, 14f);
-
-            var tcTeamGo = MakeRect("TeamContainer", _fireteamSection.transform);
-            var tcTeamRt = tcTeamGo.GetComponent<RectTransform>();
-            tcTeamRt.anchorMin = new Vector2(0f, 1f); tcTeamRt.anchorMax = new Vector2(1f, 1f);
-            tcTeamRt.pivot = new Vector2(0f, 1f);
-            tcTeamRt.anchoredPosition = new Vector2(0f, -20f);
-            tcTeamRt.sizeDelta = new Vector2(0f, 60f);
-            _fireteamContainer = tcTeamGo.transform;
-            _fireteamSection.SetActive(false);
-
-            var progTrack = MakeRect("ProgressTrack", panelGo.transform);
-            var ptRt = progTrack.GetComponent<RectTransform>();
-            ptRt.anchorMin = new Vector2(0f, 0f); ptRt.anchorMax = new Vector2(1f, 0f);
-            ptRt.pivot = new Vector2(0.5f, 0f);
-            ptRt.anchoredPosition = Vector2.zero; ptRt.sizeDelta = new Vector2(0f, 3f);
-            progTrack.AddComponent<Image>().color = new Color(0.1f, 0.1f, 0.1f, 1f);
-
-            var progFillGo = MakeRect("ProgressFill", progTrack.transform);
-            _progressBarFill = progFillGo.GetComponent<RectTransform>();
-            _progressBarFill.anchorMin = Vector2.zero; _progressBarFill.anchorMax = Vector2.one;
-            _progressBarFill.sizeDelta = Vector2.zero; _progressBarFill.anchoredPosition = Vector2.zero;
-            _progressBarFill.pivot = new Vector2(0f, 0.5f);
-            progFillGo.AddComponent<Image>().color = new Color(1f, 0.84f, 0f, 0.65f);
-
-            _dismissText = MakeTMP("Dismiss", _root.transform, 12f, FontStyles.Normal, TextAlignmentOptions.Center);
-            _dismissText.color = new Color(0.4f, 0.4f, 0.4f, 0f);
-            var dr = _dismissText.rectTransform;
-            dr.anchorMin = new Vector2(0f, 0f); dr.anchorMax = new Vector2(1f, 0f);
-            dr.pivot = new Vector2(0.5f, 0f);
-            dr.anchoredPosition = new Vector2(0f, 12f); dr.sizeDelta = new Vector2(0f, 20f);
-
-            _canvasGroup.alpha = 0f;
-            _root.SetActive(false);
-
-            BuildVideoPanel();
-        }
-
-        private void BuildStatRow(Transform parent, string label, Color accentColor, float leftPad, float offsetY,
-            out TextMeshProUGUI numLabel, out CanvasGroup cg, Color numColor)
-        {
-            var rowGo = MakeRect($"Stat_{label}", parent);
-            var rowRt = rowGo.GetComponent<RectTransform>();
-            rowRt.anchorMin = new Vector2(0f, 1f); rowRt.anchorMax = new Vector2(0.5f, 1f);
-            rowRt.pivot = new Vector2(0f, 1f);
-            rowRt.anchoredPosition = new Vector2(leftPad, offsetY);
-            rowRt.sizeDelta = new Vector2(-leftPad - 8f, 52f);
-
-            cg = rowGo.AddComponent<CanvasGroup>();
-            cg.alpha = 0f;
-
-            var accentGo = MakeRect("Accent", rowGo.transform);
-            var accentRt = accentGo.GetComponent<RectTransform>();
-            accentRt.anchorMin = Vector2.zero; accentRt.anchorMax = new Vector2(0f, 1f);
-            accentRt.pivot = new Vector2(0f, 0.5f);
-            accentRt.anchoredPosition = Vector2.zero; accentRt.sizeDelta = new Vector2(3f, 0f);
-            accentGo.AddComponent<Image>().color = accentColor;
-
-            numLabel = MakeTMP($"Num_{label}", rowGo.transform, 28f, FontStyles.Bold, TextAlignmentOptions.Left);
-            numLabel.color = numColor;
-            var nRt = numLabel.rectTransform;
-            nRt.anchorMin = new Vector2(0f, 0f); nRt.anchorMax = new Vector2(0f, 1f);
-            nRt.pivot = new Vector2(0f, 0.5f);
-            nRt.anchoredPosition = new Vector2(10f, 0f);
-            nRt.sizeDelta = new Vector2(56f, 0f);
-
-            var txt = MakeTMP($"Lbl_{label}", rowGo.transform, 14f, FontStyles.Normal, TextAlignmentOptions.Left);
-            txt.text  = label;
-            txt.color = new Color(0.6f, 0.6f, 0.6f, 1f);
-            var tRt = txt.rectTransform;
-            tRt.anchorMin = new Vector2(0f, 0f); tRt.anchorMax = new Vector2(1f, 1f);
-            tRt.pivot = new Vector2(0f, 0.5f);
-            tRt.offsetMin = new Vector2(72f, 0f);
-            tRt.offsetMax = new Vector2(-4f, 0f);
-        }
-
-        private void BuildItemRow(int index)
-        {
-            var row = MakeRect($"ItemRow{index}", _topItemsContainer);
-            var rr = row.GetComponent<RectTransform>();
-            rr.anchorMin = new Vector2(0f, 1f); rr.anchorMax = new Vector2(1f, 1f);
-            rr.pivot = new Vector2(0f, 1f);
-            rr.anchoredPosition = new Vector2(0f, -index * RowHeight);
-            rr.sizeDelta = new Vector2(0f, RowHeight - 4f);
-
-            var cg = row.AddComponent<CanvasGroup>();
-            cg.alpha = 0f;
-
-            row.AddComponent<Image>().color = new Color(0.06f, 0.06f, 0.09f, index % 2 == 0 ? 0.6f : 0.3f);
-
-            var accentGo = MakeRect("Accent", row.transform);
-            var accentRt = accentGo.GetComponent<RectTransform>();
-            accentRt.anchorMin = Vector2.zero; accentRt.anchorMax = new Vector2(0f, 1f);
-            accentRt.pivot = new Vector2(0f, 0.5f);
-            accentRt.anchoredPosition = Vector2.zero; accentRt.sizeDelta = new Vector2(3f, 0f);
-            var accentImg = accentGo.AddComponent<Image>();
-
-            const float badgeW = 36f;
-            var badgeGo = MakeRect("RankBadge", row.transform);
-            var badgeRt = badgeGo.GetComponent<RectTransform>();
-            badgeRt.anchorMin = new Vector2(0f, 0.5f); badgeRt.anchorMax = new Vector2(0f, 0.5f);
-            badgeRt.pivot = new Vector2(0f, 0.5f);
-            badgeRt.anchoredPosition = new Vector2(8f, 0f);
-            badgeRt.sizeDelta = new Vector2(badgeW, 22f);
-            var badgeBg = badgeGo.AddComponent<Image>();
-
-            var badgeLabel = MakeTMP($"RankLabel{index}", badgeGo.transform, 11f, FontStyles.Bold, TextAlignmentOptions.Center);
-            badgeLabel.color = new Color(0.05f, 0.05f, 0.05f);
-            Stretch(badgeLabel.rectTransform);
-
-            var label = MakeTMP($"Label{index}", row.transform, 14f, FontStyles.Normal, TextAlignmentOptions.Left);
-            label.color = new Color(0.9f, 0.9f, 0.9f);
-            var lr = label.rectTransform;
-            lr.anchorMin = new Vector2(0f, 0f); lr.anchorMax = new Vector2(1f, 1f);
-            lr.pivot = new Vector2(0f, 0.5f);
-            lr.offsetMin = new Vector2(8f + badgeW + 12f, 0f);
-            lr.offsetMax = new Vector2(-8f, 0f);
-
-            _itemRows.Add(new ItemRowData
-            {
-                Cg = cg, Rt = rr, Label = label, RankBadge = badgeLabel,
-                RankBg = badgeBg, AccentBar = accentImg
-            });
-        }
-
-        private void EnsureItemRows(int count)
-        {
-            while (_itemRows.Count < count)
-                BuildItemRow(_itemRows.Count);
-        }
-
-        private static void MakeAccentBar(string name, Transform parent, Vector2 anchorMin, Vector2 anchorMax, float h, Color color)
-        {
-            var go = MakeRect(name, parent);
-            go.AddComponent<Image>().color = color;
-            var r = go.GetComponent<RectTransform>();
-            r.anchorMin = anchorMin; r.anchorMax = anchorMax;
-            r.pivot = anchorMin.y >= 1f ? Vector2.up : Vector2.zero;
-            r.anchoredPosition = Vector2.zero; r.sizeDelta = new Vector2(0f, h);
-        }
-
-        private static void PlaceLabel(RectTransform rt, float offsetY, float height)
-        {
-            rt.anchorMin = new Vector2(0f, 1f); rt.anchorMax = new Vector2(1f, 1f);
-            rt.pivot = new Vector2(0.5f, 1f);
-            rt.anchoredPosition = new Vector2(0f, offsetY);
-            rt.sizeDelta = new Vector2(-32f, height);
-        }
-
-        private static void AddHRule(Transform parent, float offsetY, Color color)
-        {
-            var go = MakeRect("HRule", parent);
-            go.AddComponent<Image>().color = color;
-            var r = go.GetComponent<RectTransform>();
-            r.anchorMin = new Vector2(0.02f, 1f); r.anchorMax = new Vector2(0.98f, 1f);
-            r.pivot = new Vector2(0.5f, 1f);
-            r.anchoredPosition = new Vector2(0f, offsetY); r.sizeDelta = new Vector2(0f, 1f);
+            if (_scrimTexture       != null) Destroy(_scrimTexture);
+            if (_bgBlurTexture      != null) Destroy(_bgBlurTexture);
         }
 
         private static GameObject MakeRect(string name, Transform parent)
@@ -1274,21 +967,82 @@ namespace LootNet.UI
             return t;
         }
 
+        /// Only for the big type. Underlay on the 14px side rows just muddies them.
+        private static void AddSoftShadow(TextMeshProUGUI t)
+        {
+            try
+            {
+                var mat = t.fontMaterial;           // instance, never sharedMaterial
+                mat.EnableKeyword(ShaderUtilities.Keyword_Underlay);
+                mat.SetColor(ShaderUtilities.ID_UnderlayColor, new Color(0f, 0f, 0f, 0.55f));
+                mat.SetFloat(ShaderUtilities.ID_UnderlayOffsetX,   0.6f);
+                mat.SetFloat(ShaderUtilities.ID_UnderlayOffsetY,  -0.6f);
+                mat.SetFloat(ShaderUtilities.ID_UnderlaySoftness,  0.35f);
+                mat.SetFloat(ShaderUtilities.ID_UnderlayDilate,    0.1f);
+            }
+            catch (Exception e)
+            {
+                // Some cloned EFT font materials have no underlay pass.
+                Plugin.LogSource.LogWarning($"[LootNet] Underlay unavailable: {e.Message}");
+            }
+        }
+
         private static void Stretch(RectTransform rt)
         {
             rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
             rt.sizeDelta = Vector2.zero; rt.anchoredPosition = Vector2.zero;
         }
 
-        private static string RankLabel(int i) => i switch { 0 => "#1", 1 => "#2", 2 => "#3", _ => $"#{i+1}" };
+        private static Color TitleColor(bool died) =>
+            died ? new Color(1f, 0.54f, 0.54f) : Color.white;
 
-        private static Color RankColor(int i) => i switch
+        private static Color ValueTint(double v)
         {
-            0 => new Color(1f,    0.84f, 0f,    1f),
-            1 => new Color(0.75f, 0.75f, 0.75f, 1f),
-            2 => new Color(0.80f, 0.50f, 0.20f, 1f),
-            _ => new Color(0.20f, 0.20f, 0.22f, 1f),
-        };
+            if (v >= 500_000) return new Color(1f,    0.45f, 0.85f);
+            if (v >= 300_000) return new Color(0.78f, 0.55f, 1f);
+            if (v >= 150_000) return new Color(0.45f, 0.75f, 1f);
+            if (v >= 50_000)  return new Color(0.90f, 0.78f, 0.30f);
+            return new Color(0.72f, 0.72f, 0.72f);
+        }
+
+        /// Bilinear downsample of the frozen frame. Cheap defocus so the type is not
+        /// sitting on sharp game detail.
+        private Texture Defocus(Texture2D source)
+        {
+            if (source == null) return null;
+
+            int w = Mathf.Max(16, source.width  / 6);
+            int h = Mathf.Max(16, source.height / 6);
+
+            if (_bgBlurTexture != null) Destroy(_bgBlurTexture);
+            _bgBlurTexture = new RenderTexture(w, h, 0) { filterMode = FilterMode.Bilinear };
+
+            var prev = RenderTexture.active;
+            Graphics.Blit(source, _bgBlurTexture);
+            RenderTexture.active = prev;
+
+            return _bgBlurTexture;
+        }
+
+        /// Vertical scrim: near-clear at the top, heavy across the lower band where all
+        /// the typography lives. A uniform tint reads flat, a gradient reads lit.
+        private static Texture2D BuildScrimTexture()
+        {
+            const int h = 64;
+            var tex = new Texture2D(1, h, TextureFormat.RGBA32, false);
+            tex.filterMode = FilterMode.Bilinear;
+            tex.wrapMode   = TextureWrapMode.Clamp;
+            var px = new Color32[h];
+            for (int y = 0; y < h; y++)
+            {
+                float v = y / (h - 1f);                            // 0 = bottom of screen
+                float a = Mathf.SmoothStep(0.90f, 0.10f, Mathf.Clamp01(v / 0.70f));
+                px[y] = new Color32(255, 255, 255, (byte)(a * 255f));
+            }
+            tex.SetPixels32(px);
+            tex.Apply();
+            return tex;
+        }
 
         private static Texture2D BuildVignetteTexture()
         {
@@ -1303,33 +1057,13 @@ namespace LootNet.UI
                 float dx = (x / (s - 1f)) * 2f - 1f;
                 float dy = (y / (s - 1f)) * 2f - 1f;
                 float d  = Mathf.Sqrt(dx * dx + dy * dy);
-                float a  = Mathf.Clamp01((d - 0.5f) / 0.65f);
+                float a  = Mathf.Clamp01((d - 0.68f) / 0.55f);
                 a        = a * a;
-                px[y * s + x] = new Color32(0, 0, 0, (byte)(a * 210f));
+                px[y * s + x] = new Color32(0, 0, 0, (byte)(a * 180f));
             }
             tex.SetPixels32(px);
             tex.Apply();
             return tex;
-        }
-
-        private static Color RarityColor(double v)
-        {
-            if (v >= 1_000_000) return new Color(1f,    0.15f, 0.15f);
-            if (v >= 500_000)   return new Color(1f,    0.20f, 0.80f);
-            if (v >= 300_000)   return new Color(0.75f, 0.30f, 1f);
-            if (v >= 150_000)   return new Color(0.20f, 0.70f, 1f);
-            if (v >= 50_000)    return new Color(1f,    0.85f, 0.10f);
-            return new Color(0.40f, 0.40f, 0.40f);
-        }
-
-        private static Color ValueColor(double v)
-        {
-            if (v >= 1_000_000) return new Color(1f,    0.20f, 0.20f);
-            if (v >= 500_000)   return new Color(1f,    0f,    1f);
-            if (v >= 300_000)   return new Color(1f,    0.40f, 0.80f);
-            if (v >= 150_000)   return new Color(0.40f, 0.80f, 1f);
-            if (v >= 50_000)    return new Color(0.40f, 1f,    0.40f);
-            return Color.white;
         }
     }
 }
