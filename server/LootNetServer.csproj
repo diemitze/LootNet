@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <RootNamespace>LootNetServer</RootNamespace>
-    <Version>1.1.0</Version>
+    <Version>1.1.2</Version>
     <Authors>user</Authors>
     <Company>user</Company>
     <Product>LootNetServer</Product>
@@ -21,10 +21,10 @@
     <PackageReference Include="SPTushonka.Server.Core" Version="4.1.3" />
   </ItemGroup>
 
-
   <Target Name="DeployServerMod" AfterTargets="Build">
     <ItemGroup>
       <ServerInstall Include="D:\SPT 4.1\SPT_Runtime\user\mods" />
+      <ServerInstall Include="D:\SPT 4.1 dev\SPT_Runtime\user\mods" />
       <ServerInstall Include="D:\SPT Fika dev\SPT\user\mods" />
       <ServerInstall Include="D:\SPT fika dev player2\SPT\user\mods" />
     </ItemGroup>

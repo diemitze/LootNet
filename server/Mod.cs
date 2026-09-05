@@ -21,7 +21,7 @@ public record ModMetadata : IModMetadata
     public string Name { get; init; } = "LootNet";
     public string Author { get; init; } = "20fpsguy";
     public List<string>? Contributors { get; init; }
-    public SemanticVersioning.Version Version { get; init; } = new("1.1.0");
+    public SemanticVersioning.Version Version { get; init; } = new("1.1.2");
     public SemanticVersioning.Range SptVersion { get; init; } = new("~4.1.0");
     public List<string>? Incompatibilities { get; init; }
     public Dictionary<string, SemanticVersioning.Range>? ModDependencies { get; init; }
@@ -366,10 +366,14 @@ public class LootNetCallback(
 {
     public ValueTask<string> HandleGetPrices(string url, EmptyRequestData info, MongoId sessionId)
     {
-        // Static table as fallback for items with no live offer.
+        // Static table as fallback for items with no live offer. Some SPT builds / price-editing
+        // mods leave NaN or Infinity in here, which System.Text.Json refuses to write.
         var prices = new Dictionary<string, double>();
         foreach (var kvp in ragfairPriceService.GetAllFleaPrices())
+        {
+            if (!IsUsablePrice(kvp.Value)) continue;
             prices[kvp.Key.ToString()] = kvp.Value;
+        }
 
         // Live flea offers so custom/inflated prices (e.g. SVM) are reflected.
         var sums = new Dictionary<string, double>();
@@ -380,7 +384,7 @@ public class LootNetCallback(
             var items = offer.Items;
             if (items == null || items.Count == 0) continue;
             double cost = offer.RequirementsCost ?? 0;
-            if (cost <= 0) continue;
+            if (!IsUsablePrice(cost) || cost <= 0) continue;
 
             string tpl = items[0].Template.ToString();
             sums.TryGetValue(tpl, out double s);
@@ -389,10 +393,16 @@ public class LootNetCallback(
             counts[tpl] = c + 1;
         }
         foreach (var kvp in sums)
-            prices[kvp.Key] = kvp.Value / counts[kvp.Key];
+        {
+            double avg = kvp.Value / counts[kvp.Key];
+            if (!IsUsablePrice(avg)) continue;
+            prices[kvp.Key] = avg;
+        }
 
         return new ValueTask<string>(httpResponseUtil.GetBody(JsonSerializer.Serialize(prices)));
     }
+
+    private static bool IsUsablePrice(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
 
     public ValueTask<string> HandleSubmitSummary(string url, RaidSummarySubmitRequest info, MongoId sessionId)
     {

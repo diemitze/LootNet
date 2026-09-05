@@ -1,4 +1,4 @@
-using BepInEx;
+﻿using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using EFT;
@@ -13,7 +13,7 @@ using UnityEngine;
 
 namespace LootNet
 {
-    [BepInPlugin("com.20fpsguy.LootNet", "LootNet", "1.1.1")]
+    [BepInPlugin("com.20fpsguy.LootNet", "LootNet", "1.1.2")]
     [BepInDependency("com.20fpsguy.QuickLootServer", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {

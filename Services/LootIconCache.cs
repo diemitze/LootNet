@@ -10,7 +10,16 @@ using UnityEngine;
 
 namespace LootNet.Services
 {
-.
+    /// Template id -> item icon sprite. Icons come out of the game's bundles asynchronously,
+    /// so callers Request early and Get later.
+    ///
+    /// Two things make a naive cache here fail until the game is restarted, and both are
+    /// guarded below:
+    ///   - GetItemSpriteAsync reaches through Singleton&lt;ItemIconCreator&gt;.Instance, which is
+    ///     null during menu/raid transitions. That fault is transient, so failures are counted
+    ///     and retried instead of blacklisted.
+    ///   - The sprite comes from ResourcesCache, so it can be destroyed under us when its
+    ///     bundle unloads. A cached entry is revalidated on every read.
     internal static class LootIconCache
     {
         private const int MaxAttempts = 3;

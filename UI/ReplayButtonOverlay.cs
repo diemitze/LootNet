@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using TMPro;
 using UnityEngine;
@@ -7,7 +7,6 @@ using UnityEngine.UI;
 
 namespace LootNet.UI
 {
-
     public class ReplayButtonOverlay : MonoBehaviour
     {
         private static ReplayButtonOverlay _instance;
