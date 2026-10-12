@@ -1,103 +1,76 @@
 # LootNet
 
-A client mod for [SPT](https://www.sp-tarkov.com/) that tracks the flea market value of everything you loot during a raid and shows a polished summary screen when you extract.
+LootNet tracks what everything you loot in a raid is worth, then lays it all out on a summary screen when the raid ends.
 
-**Version:** 1.0.9  
-**SPT Version:** 4.0.13  
-**License:** MIT
+Built for SPT 4.1. Released under the MIT license.
 
----
+## What it does
 
-## Features
+**Raid summary.** When a raid ends, your loot fills a stash grid one item at a time, most valuable first, each at its real size with its in-game icon. The total counts up as the items land. Guns and armor show up assembled, with their attachments and plates folded into one item. Next to the grid you get your kills, XP, how the raid stacks up against your recent ones, and a closing line that fits how it went. If you died, the grid fades to grey and the total is struck through.
 
-- **Live loot value** — displays the running flea market value of your inventory while in raid, shown as a native-looking label in the inventory screen
-- **Raid summary screen** — after extraction, shows an animated breakdown of your total loot value, top 5 finds, kill count, and (if using PIT Fireteam) follower kill stats
-- **PMC & Scav support** — PMC raids track newly acquired gear only; Scav raids include your spawn loadout
-- **Flea + handbook fallback** — uses live flea market prices, falls back to handbook values if flea data is unavailable
-- **Secret easter egg** — find it in the F12 BepInEx config menu
+**Live loot value.** While you're in a raid, your inventory screen shows the running value of what you've picked up.
 
----
+**PMC and Scav raids.** On a PMC raid only what you find counts, not the gear you brought in. On a Scav raid your whole loadout counts, since it was free.
 
-## Changelog
+**Raid history.** A HISTORY button in the main menu lists your recent raids, and any of them can be replayed. Turn on *Persist Raid History* to keep them between sessions.
 
-### v1.0.8
-- **Fika team summary** — coop raids open a ranked scoreboard showing the whole fireteam at once: team haul total with a rising count-up animation, and one row per player with rank medal, loot bar, kills, items, and XP
-- Every player's top finds are shown expanded at once for easy comparison; click a row to collapse it, and the board auto-compacts for larger squads
-- Summaries are relayed at the moment of extraction (host and clients), so teammates appear without waiting for the raid to fully end
-- Coop raids open the scoreboard directly; solo and non-Fika raids are unchanged
+**Prices.** Values come from the flea market, with handbook prices as a fallback. Quest items never count. Anything you can't sell on the flea is left out too, unless you turn that off.
 
-### v1.0.6
-- **XP earned tracking** shown as `+XXX XP EARNED` under the loot value, with the survival/extract bonus revealing as a separate animated sub-label
-- **Death summary** — dedicated red "YOU ARE DEAD / FAILED TO EXTRACT" title, death stinger sound, and panel shake when you die
-- **In-Raid Inventory Counter toggle** to hide the running counter (F12 config)
-- **Default Flea Market Rules toggle** to only count flea-sellable items (F12 config); quest items are always excluded
-- Teammates redesigned as horizontal cards under the left-column stats
+## Optional integrations
 
-### v1.0.5
-- **Raid History panel** — new `HISTORY` button in the main menu nav bar opens a side drawer showing all raids from the current session
-  - Each card shows map, raid type (PMC / SCAV), relative time, total loot value, and kill summary
-  - PIT Fireteam squad kills are included in the kill line when the mod is detected
-  - Empty-state message shown when no raids have been recorded yet
-  - Capped at 15 entries (oldest dropped silently); a notice is shown at the bottom when the cap is reached
-- Fixed GPU texture leak in the raid summary screen
-- Internal: extracted shared raid-state reset logic, cached PIT reflection delegate
+**PIT Fireteam.** If [PIT Fireteam](https://hub.sp-tarkov.com/files/file/2362-pit-fireteam/) is installed, the summary lists your squad: each follower's kills, who went down, and the squad's total. Nothing to set up.
 
-### v1.0.4
-- Full-screen animated raid summary screen after extraction
-- Native EFT UI loot value bar in the inventory screen
-- Live item tracking during raid (PMC and Scav modes)
-- PIT Fireteam follower kill stats on the summary screen
+**Fika.** In co-op raids, everyone's summary is shared and shown together on one team scoreboard. This needs `LootNetFika.dll` (it's in the release zip) and the LootNet server mod.
 
----
+## Installing
 
-## Installation
+1. Download `LootNet.zip` from [Releases](../../releases).
+2. Extract it into your SPT folder. It contains:
+   - `BepInEx/plugins/LootNet/`: the client mod and the Fika companion
+   - `SPT_Runtime/user/mods/LootNetServer/`: the server mod
+3. Start SPT as usual.
 
-1. Download the latest `LootNet.zip` from [Releases](../../releases)
-2. Extract into your SPT install folder — the DLL lands in `BepInEx\plugins\` automatically
-3. Launch SPT as usual
+The server mod provides the price data and relays summaries in Fika raids. Without it, prices fall back to handbook values.
 
----
+## Settings
 
-## Optional: PIT Fireteam integration
+Open the BepInEx config with F12.
 
-If you have [PIT Fireteam](https://hub.sp-tarkov.com/files/file/2362-pit-fireteam/) installed, LootNet will automatically detect it and show a **TEAMMATES** section on the summary screen with each follower's kill count.
+| Setting | Default | What it does |
+|---|---|---|
+| Show In-Raid Inventory Counter | On | Shows the running loot value in your inventory during a raid |
+| Manual Dismiss Only | Off | The summary stays up until you click it, instead of closing after 15 seconds |
+| Persist Raid History | Off | Saves raid history to `BepInEx/plugins/LootNet/raid_history.json`, keeping the last 15 raids |
+| Use Handbook Prices | Off | Uses handbook prices instead of flea prices. Useful with custom traders or no flea market. Needs a restart |
+| Default Flea Market Rules | On | Only counts items that can be sold on the flea. Turn off if another mod unlocks the flea filter |
 
-No configuration needed — it's a soft dependency.
+There's also a hidden setting in there somewhere.
 
----
+## Building
 
-## Building from source
+You need the .NET SDK and a local SPT 4.1 install. The project files reference the game DLLs by absolute path, so point them at your own install first.
 
 ```sh
-cd LootNet
 dotnet build -c Release
 ```
 
-The PostBuild step copies `LootNet.dll` directly to your SPT `BepInEx\plugins\` folder.  
-A distributable `LootNet.zip` is also produced automatically.
+The build copies `LootNet.dll` into your SPT plugins folder, builds the server mod and the Fika companion, and packs everything into `LootNet.zip`.
 
-> Requires .NET SDK with `netstandard2.1` support and a local SPT installation for DLL references.
-
----
-
-## Project structure
+## Layout
 
 ```
-LootNet/
-├── LootNet.csproj
-├── Plugin.cs                    ← BepInEx entry point, config, patch registration
-├── Patches/
-│   ├── InventoryPatch.cs        ← tracks items added/removed from player inventory
-│   ├── InventoryScreenPatch.cs  ← inventory open/close + raid end hooks
-│   └── MenuScreenPatch.cs       ← injects the HISTORY button into the main menu nav bar
-├── Services/
-│   ├── PriceService.cs          ← fetches & caches flea/handbook prices from SPT server
-│   └── RaidTracker.cs           ← tracks loot value, kills, PIT follower stats, and raid history
-└── UI/
-    ├── LootValueDisplay.cs      ← in-raid inventory overlay (cloned from EFT's native UI)
-    ├── RaidSummaryDisplay.cs    ← animated post-raid summary screen
-    ├── RaidHistoryDisplay.cs    ← side drawer showing session raid history
-    └── RaidHistoryMenuButton.cs ← builds and injects the HISTORY nav button
+Plugin.cs              entry point, config, patch registration
+Patches/               inventory tracking, raid end, main menu button
+Services/
+  RaidTracker.cs       loot, kills, XP, squad and raid history
+  PriceService.cs      prices from the server mod
+  LootIconCache.cs     item icons
+  Quips.cs             closing lines
+UI/
+  RaidSummaryDisplay.cs   summary screen
+  TeamSummaryDisplay.cs   Fika team scoreboard
+  RaidHistoryDisplay.cs   history panel
+  LootValueDisplay.cs     in-raid inventory counter
+fika/                  Fika companion plugin
+server/                SPT server mod
 ```
-
----
