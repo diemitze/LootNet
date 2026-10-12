@@ -13,6 +13,29 @@ using EFT.Ballistics;
 
 namespace LootNet.Services
 {
+    /// One looted item (or one stack) as the summary grid draws it.
+    public class LootEntry
+    {
+        public string Name;
+        public string ShortName;
+        public string TemplateId;
+        public double Value;
+        public int    Width  = 1;
+        public int    Height = 1;
+        public int    Count  = 1;   // stack units
+
+        // The real item, so the icon shows a gun with its attachments. Only alive for the raid it came from.
+        [Newtonsoft.Json.JsonIgnore] public Item LiveItem;
+    }
+
+    /// A PIT Fireteam follower as the summary lists them.
+    public class FireteamMate
+    {
+        public string Name;
+        public int    Kills;
+        public bool   Alive = true;
+    }
+
     public class RaidStats
     {
         public double TotalFoundValue;
@@ -22,6 +45,7 @@ namespace LootNet.Services
         public List<(string Name, double Value)> TopItems = new();
         public List<string> TopItemTemplates = new();   // parallel to TopItems, for icons
         public List<(string Name, int Kills)> FireteamMembers;
+        public List<FireteamMate> Fireteam;   // whole squad incl. followers without kills. Null without PIT
         public string MapName;
         public DateTime RaidTime;
         public bool IsScavRaid;
@@ -29,6 +53,7 @@ namespace LootNet.Services
         public int XpEarned;
         public int XpBonus;
         public string PlayerName;
+        public List<LootEntry> Loot;   // every find, most valuable first. Null in history saved before 1.2
     }
 
     public class RaidTracker : MonoBehaviour
@@ -54,16 +79,22 @@ namespace LootNet.Services
 
         public static Func<string> LocalPlayerId;
 
-        private static readonly Dictionary<string, (string Name, string TemplateId, double Value)> _foundItems = new();
+        private static readonly Dictionary<string, LootEntry> _foundItems = new();
+        private static readonly Dictionary<string, Item> _liveItems = new();
 
         private static readonly Dictionary<string, int> _spawnStackUnits = new();
         private static readonly Dictionary<string, (string Name, int Units)> _foundStacks = new();
         private static readonly Dictionary<string, string> _stackNames = new();
+        private static readonly Dictionary<string, LootEntry> _stackMeta = new();
         private static readonly HashSet<string> _excludedStackTemplates = new();
         private static readonly Dictionary<string, bool> _stackableCache = new();
         private static readonly Dictionary<string, (string Name, int Kills)> _botKills = new();
         private static readonly HashSet<string> _recentKillIds = new();
         private static readonly HashSet<string> _confirmedFollowerIds = new();
+        private static readonly Dictionary<string, FireteamMate> _mates = new();
+        private static MethodInfo _pitGetFollowers;
+        private static MethodInfo _pitGetBot;
+        private static bool _mateSnapshotWarned;
         private static int _pmcKills;
         private static int _scavKills;
         private static string _pendingMapName;
@@ -110,20 +141,60 @@ namespace LootNet.Services
                 catch (Exception ex) { Plugin.LogSource.LogWarning($"[LootNet] XP poll threw: {ex.Message}"); }
 
                 if (v > _latestSessionXp) _latestSessionXp = v;
+
+                if (IsInRaid) SnapshotFireteam();
             }
+        }
+
+        /// PIT drops a follower from its list the moment they die, so the squad is recorded
+        /// as the raid goes rather than read once at the end.
+        private static void SnapshotFireteam()
+        {
+            if (_pitGetFollowers == null) return;
+            try
+            {
+                if (!(_pitGetFollowers.Invoke(null, null) is System.Collections.IEnumerable followers)) return;
+                foreach (var f in followers)
+                {
+                    if (f == null) continue;
+                    _pitGetBot ??= f.GetType().GetMethod("GetBot", BindingFlags.Public | BindingFlags.Instance);
+                    if (!(_pitGetBot?.Invoke(f, null) is BotOwner bot) || string.IsNullOrEmpty(bot.ProfileId)) continue;
+
+                    if (!_mates.TryGetValue(bot.ProfileId, out var mate))
+                    {
+                        mate = new FireteamMate { Name = bot.Profile?.Nickname ?? "Follower" };
+                        _mates[bot.ProfileId] = mate;
+                    }
+                    if (bot.IsDead) mate.Alive = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                if (_mateSnapshotWarned) return;
+                _mateSnapshotWarned = true;
+                Plugin.LogSource.LogWarning($"[LootNet] Fireteam snapshot failed: {ex.Message}");
+            }
+        }
+
+        public static void MarkPlayerKilled(string profileId)
+        {
+            if (profileId != null && _mates.TryGetValue(profileId, out var mate)) mate.Alive = false;
         }
 
         private static void ClearRaidState()
         {
             SpawnedItemIds.Clear();
             _foundItems.Clear();
+            _liveItems.Clear();
             _spawnStackUnits.Clear();
             _foundStacks.Clear();
             _stackNames.Clear();
+            _stackMeta.Clear();
             _excludedStackTemplates.Clear();
             _botKills.Clear();
             _recentKillIds.Clear();
             _confirmedFollowerIds.Clear();
+            _mates.Clear();
             _pmcKills  = 0;
             _scavKills = 0;
             PlayerDied = false;
@@ -137,6 +208,9 @@ namespace LootNet.Services
             if (player == null) return;
 
             ClearRaidState();
+            // Last raid's replay is done with; stop history pinning its item objects in memory.
+            foreach (var h in RaidHistory)
+                if (h.Loot != null) foreach (var e in h.Loot) e.LiveItem = null;
             TeamSummaryStore.Clear();
             HighScoreState.Clear();
             _latestSessionXp = 0;
@@ -193,7 +267,18 @@ namespace LootNet.Services
 
             string templateId = item.TemplateId.ToString();
             double price = Plugin.PriceService.IsLoaded ? Plugin.PriceService.GetPrice(templateId) : 0;
-            _foundItems[id] = (item.LocalizedName(), templateId, price);
+            _foundItems[id] = MakeEntry(item, templateId, price);
+            _liveItems[id]  = item;
+        }
+
+        private static LootEntry MakeEntry(Item item, string templateId, double value)
+        {
+            var e = new LootEntry { Name = item.LocalizedName(), TemplateId = templateId, Value = value };
+            try { e.ShortName = item.LocalizedShortName(); } catch { }
+            // Template size, not CalculateCellSize: the icon is rendered from the bare template too.
+            try { e.Width = Math.Max(1, item.Width); e.Height = Math.Max(1, item.Height); } catch { }
+            if (string.IsNullOrEmpty(e.ShortName)) e.ShortName = e.Name;
+            return e;
         }
 
         private static bool IsStackable(Item item)
@@ -218,6 +303,7 @@ namespace LootNet.Services
                 return;
             }
             _stackNames[tpl] = item.LocalizedName();
+            _stackMeta[tpl]  = MakeEntry(item, tpl, 0);
         }
 
         private static void RecountStacks()
@@ -304,12 +390,8 @@ namespace LootNet.Services
 
         public static void RefreshPrices()
         {
-            var keys = _foundItems.Keys.ToList();
-            foreach (var key in keys)
-            {
-                var (name, templateId, _) = _foundItems[key];
-                _foundItems[key] = (name, templateId, Plugin.PriceService.GetPrice(templateId));
-            }
+            foreach (var e in _foundItems.Values)
+                e.Value = Plugin.PriceService.GetPrice(e.TemplateId);
         }
 
         public static void TrackItemRemoved(Item item)
@@ -319,6 +401,7 @@ namespace LootNet.Services
             string id = item.Id.ToString();
             if (!IsScavRaid && SpawnedItemIds.Contains(id)) return;
             _foundItems.Remove(id);
+            _liveItems.Remove(id);
         }
 
         public static bool MarkKillSeen(string profileId) => _recentKillIds.Add(profileId);
@@ -363,7 +446,7 @@ namespace LootNet.Services
 
             if (!hasLoot && !hasKills && xpEarned <= 0 && survived) return null;
 
-            var allFound = _foundItems.Values.Where(x => x.Value > 0).ToList();
+            var allFound = FoldAttachments().Where(x => x.Value > 0).ToList();
 
             var stackFound = _foundStacks
                 .Select(kv => (kv.Value.Name, Units: kv.Value.Units, Tpl: kv.Key,
@@ -386,6 +469,14 @@ namespace LootNet.Services
 
             var top = grouped.Take(5).ToList();
 
+            var loot = allFound
+                .Concat(stackFound.Select(x => StackEntry(x.Tpl, x.Name, x.Units, x.Total)))
+                .OrderByDescending(x => x.Value)
+                .ToList();
+
+            // Start rendering now; the summary opens a moment later and gun icons take a while.
+            foreach (var e in loot) LootIconCache.Request(e);
+
             int bonus = TryReadCounterTag("ExpExitStatus");
             int baseXp = xpEarned - bonus;
             if (baseXp < 0) baseXp = xpEarned;
@@ -399,12 +490,85 @@ namespace LootNet.Services
                 TopItems         = top.Select(x => (x.name, x.total)).ToList(),
                 TopItemTemplates = top.Select(x => x.tpl).ToList(),
                 FireteamMembers = TryGetFireteamStats(),
+                Fireteam        = BuildFireteam(),
                 MapName         = _pendingMapName ?? "Unknown",
                 RaidTime        = _pendingRaidTime,
                 IsScavRaid      = IsScavRaid,
                 PlayerSurvived  = survived,
                 XpEarned        = baseXp,
                 XpBonus         = bonus,
+                Loot            = loot,
+            };
+        }
+
+        /// A looted gun arrives as a receiver, barrel, stock, mag... one item each. Anything
+        /// sitting in an attachment slot of another find is folded into that find, so the
+        /// grid shows one assembled gun (or one armor with its plates) carrying their value.
+        private static List<LootEntry> FoldAttachments()
+        {
+            var heads = new Dictionary<string, LootEntry>();
+            foreach (var kv in _foundItems)
+            {
+                string head = HeadOf(kv.Key);
+                if (!heads.TryGetValue(head, out var g))
+                {
+                    var src = _foundItems[head];
+                    _liveItems.TryGetValue(head, out var live);
+                    g = new LootEntry
+                    {
+                        Name = src.Name, ShortName = src.ShortName, TemplateId = src.TemplateId,
+                        Width = src.Width, Height = src.Height, LiveItem = live,
+                    };
+                    heads[head] = g;
+                }
+                g.Value += kv.Value.Value;
+            }
+
+            // Assembled size only matters for heads that actually carry attachments.
+            foreach (var g in heads.Values)
+            {
+                if (g.LiveItem == null) continue;
+                try
+                {
+                    var size = g.LiveItem.CalculateCellSize();
+                    g.Width  = Math.Max(1, size.X);
+                    g.Height = Math.Max(1, size.Y);
+                }
+                catch { }
+            }
+            return heads.Values.ToList();
+        }
+
+        /// Highest found ancestor reached through attachment slots. Grids (backpack, rig
+        /// pockets) are not slots, so loot packed inside a found bag stays its own cell.
+        private static string HeadOf(string id)
+        {
+            string head = id;
+            if (!_liveItems.TryGetValue(id, out var cur)) return head;
+            for (int depth = 0; depth < 16; depth++)
+            {
+                Item parent = null;
+                try { parent = (cur?.Parent?.Container as Slot)?.ParentItem; } catch { }
+                if (parent == null) break;
+                string pid = parent.Id.ToString();
+                if (_foundItems.ContainsKey(pid)) head = pid;
+                cur = parent;
+            }
+            return head;
+        }
+
+        private static LootEntry StackEntry(string tpl, string name, int units, double total)
+        {
+            _stackMeta.TryGetValue(tpl, out var meta);
+            return new LootEntry
+            {
+                Name       = name,
+                ShortName  = meta?.ShortName ?? name,
+                TemplateId = tpl,
+                Value      = total,
+                Width      = meta?.Width  ?? 1,
+                Height     = meta?.Height ?? 1,
+                Count      = units,
             };
         }
 
@@ -479,6 +643,27 @@ namespace LootNet.Services
         {
             yield return new WaitForSecondsRealtime(seconds);
             ExtraPollWindow = false;
+        }
+
+        private static List<FireteamMate> BuildFireteam()
+        {
+            if (_pitGetFollowers == null) return null;
+            SnapshotFireteam();
+
+            // Kills credited to a follower PIT had already dropped (died early) still count.
+            foreach (var id in _confirmedFollowerIds)
+                if (!_mates.ContainsKey(id) && _botKills.TryGetValue(id, out var k))
+                    _mates[id] = new FireteamMate { Name = k.Name, Alive = false };
+
+            if (_mates.Count == 0) return null;
+            var list = new List<FireteamMate>();
+            foreach (var kv in _mates)
+            {
+                _botKills.TryGetValue(kv.Key, out var k);
+                list.Add(new FireteamMate { Name = kv.Value.Name, Kills = k.Kills, Alive = kv.Value.Alive });
+            }
+            list.Sort((a, b) => b.Kills != a.Kills ? b.Kills.CompareTo(a.Kills) : b.Alive.CompareTo(a.Alive));
+            return list;
         }
 
         private static List<(string Name, int Kills)> TryGetFireteamStats()
@@ -832,6 +1017,7 @@ namespace LootNet.Services
                 if (isFollower == null) continue;
 
                 _pitIsFollower = isFollower;
+                _pitGetFollowers = bossPlayers.GetMethod("GetFollowers", BindingFlags.Public | BindingFlags.Static, null, Type.EmptyTypes, null);
                 _isFollower    = (Func<string, bool>)Delegate.CreateDelegate(typeof(Func<string, bool>), isFollower);
                 Plugin.LogSource.LogInfo("[LootNet] PIT Fireteam detected - fireteam stats enabled.");
                 return;
@@ -882,6 +1068,7 @@ namespace LootNet.Services
                 var mainPlayer = Singleton<GameWorld>.Instance?.MainPlayer;
                 if (mainPlayer == null) return;
                 if (__instance.ProfileId == mainPlayer.ProfileId) return;
+                RaidTracker.MarkPlayerKilled(__instance.ProfileId);   // before the aggressor check: falls and bleeds count
 
                 IPlayer aggressor = __0 ?? __1.Player?.iPlayer;
                 if (aggressor == null) return;

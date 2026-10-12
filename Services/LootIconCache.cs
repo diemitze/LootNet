@@ -1,7 +1,5 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using Comfort.Common;
 using EFT;
 using EFT.InventoryLogic;
@@ -10,111 +8,59 @@ using UnityEngine;
 
 namespace LootNet.Services
 {
-    /// Template id -> item icon sprite. Icons come out of the game's bundles asynchronously,
-    /// so callers Request early and Get later.
-    ///
-    /// Two things make a naive cache here fail until the game is restarted, and both are
-    /// guarded below:
-    ///   - GetItemSpriteAsync reaches through Singleton&lt;ItemIconCreator&gt;.Instance, which is
-    ///     null during menu/raid transitions. That fault is transient, so failures are counted
-    ///     and retried instead of blacklisted.
-    ///   - The sprite comes from ResourcesCache, so it can be destroyed under us when its
-    ///     bundle unloads. A cached entry is revalidated on every read.
+    /// Loot entry -> item icon, through the same path the stash uses (LoadItemIcon). That path
+    /// queues renders one at a time and reuses the game's on-disk icon cache.
+    /// GetItemSpriteAsync skips the render lock, so a burst of requests captured over each
+    /// other and came back blank or wrong; don't go back to it.
     internal static class LootIconCache
     {
-        private const int MaxAttempts = 3;
+        // A render that has not delivered by then is assumed lost (sprite destroyed with its
+        // bundle, creator torn down mid-transition) and gets asked for again.
+        private const float RetryAfterSeconds = 10f;
 
-        private static readonly Dictionary<string, Sprite> _cache    = new();
-        private static readonly HashSet<string>            _loading  = new();
-        private static readonly Dictionary<string, int>    _attempts = new();
+        private static readonly Dictionary<string, (ItemIcon Icon, float At)> _icons = new();
 
-        public static Sprite Get(string templateId)
+        /// With a live item the icon is rendered from it, so a gun shows its attachments.
+        /// Without one (replays of saved history) it comes from the bare template.
+        public static string KeyFor(LootEntry e)
+            => e.LiveItem != null ? "item:" + e.LiveItem.Id : e.TemplateId;
+
+        public static Sprite Get(string key)
+        {
+            if (key == null || !_icons.TryGetValue(key, out var entry)) return null;
+            var sprite = entry.Icon?.Sprite;
+            return sprite != null ? sprite : null;   // Unity null when destroyed
+        }
+
+        public static bool IsPending(string key)
+            => key != null && _icons.TryGetValue(key, out var entry)
+               && Get(key) == null && Time.realtimeSinceStartup - entry.At < RetryAfterSeconds;
+
+        public static void Request(LootEntry e)
+        {
+            if (e == null) return;
+            string key = KeyFor(e);
+            if (string.IsNullOrEmpty(key) || Get(key) != null || IsPending(key)) return;
+
+            try
+            {
+                var item = e.LiveItem ?? CreateFromTemplate(e.TemplateId);
+                if (item == null) return;
+                var icon = ItemViewFactory.LoadItemIcon(item, 1, false);
+                _icons[key] = (icon, Time.realtimeSinceStartup);
+            }
+            catch (Exception ex)
+            {
+                // ItemIconCreator is null during menu/raid transitions; the next Request retries.
+                Plugin.LogSource.LogWarning($"[LootNet] Icon request failed for {e.ShortName ?? key}: {ex.Message}");
+            }
+        }
+
+        private static Item CreateFromTemplate(string templateId)
         {
             if (string.IsNullOrEmpty(templateId)) return null;
-            if (!_cache.TryGetValue(templateId, out var sprite)) return null;
-
-            if (sprite == null)              // destroyed with its bundle
-            {
-                _cache.Remove(templateId);
-                _attempts.Remove(templateId);
-                return null;
-            }
-            return sprite;
-        }
-
-        public static bool IsPending(string templateId)
-            => templateId != null && _loading.Contains(templateId);
-
-        public static void Request(string templateId)
-        {
-            if (string.IsNullOrEmpty(templateId)) return;
-            if (Get(templateId) != null || _loading.Contains(templateId)) return;
-            if (_attempts.TryGetValue(templateId, out int tries) && tries >= MaxAttempts) return;
-
-            _loading.Add(templateId);
-            Plugin.Instance.StartCoroutine(Load(templateId));
-        }
-
-        /// Call when the game state changes: anything that failed because the UI singleton was
-        /// mid-transition deserves another go.
-        public static void RetryFailed()
-        {
-            _attempts.Clear();
-        }
-
-        private static IEnumerator Load(string templateId)
-        {
-            try
-            {
-                var task = StartLoad(templateId);
-                if (task == null) { RecordFailure(templateId); yield break; }
-
-                while (!task.IsCompleted) yield return null;
-
-                var sprite = ReadResult(task, templateId);
-                if (sprite != null) { _cache[templateId] = sprite; _attempts.Remove(templateId); }
-                else                  RecordFailure(templateId);
-            }
-            finally
-            {
-                _loading.Remove(templateId);   // must clear even if the coroutine is torn down
-            }
-        }
-
-        private static Task<Sprite> StartLoad(string templateId)
-        {
-            try
-            {
-                var factory = Singleton<ItemFactory>.Instance;
-                if (factory == null) return null;
-
-                // A throwaway instance is the only way in: the sprite lookup takes an Item, not an id.
-                var item = factory.CreateItem(MongoID.Generate(false), templateId, null);
-                if (item == null) return null;
-
-                return ItemViewFactory.GetItemSpriteAsync(item, 1);
-            }
-            catch (Exception ex)
-            {
-                Plugin.LogSource.LogWarning($"[LootNet] Icon load failed for {templateId}: {ex.Message}");
-                return null;
-            }
-        }
-
-        private static Sprite ReadResult(Task<Sprite> task, string templateId)
-        {
-            try { return task.Result; }
-            catch (Exception ex)
-            {
-                Plugin.LogSource.LogWarning($"[LootNet] Icon result failed for {templateId}: {ex.Message}");
-                return null;
-            }
-        }
-
-        private static void RecordFailure(string templateId)
-        {
-            _attempts.TryGetValue(templateId, out int tries);
-            _attempts[templateId] = tries + 1;
+            var factory = Singleton<ItemFactory>.Instance;
+            return factory?.CreateItem(MongoID.Generate(false), templateId, null);
         }
     }
 }

@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LootNet - Summary Backdrop A/B</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0b0b0d; color:#ccc; min-height:100vh; padding:20px 16px 60px;
+         font-family:'Segoe UI',Arial,sans-serif; display:flex; flex-direction:column; align-items:center; }
+  .chrome { display:flex; gap:7px; margin-bottom:10px; flex-wrap:wrap; justify-content:center; }
+  .chrome button { background:#1a1a1e; border:1px solid #333; color:#bbb; padding:8px 14px;
+                   font:600 11px/1 'Segoe UI'; letter-spacing:1.5px; cursor:pointer; }
+  .chrome button:hover { border-color:#666; color:#fff; }
+  .chrome button.active { background:#ffd700; color:#111; border-color:#ffd700; }
+  .hint { font-size:12px; color:#666; margin:6px 0 18px; letter-spacing:.4px; text-align:center; max-width:900px; }
+  .hint b { color:#ffd700; font-weight:600; }
+  .hint code { color:#ffd700; font-family:Consolas,monospace; font-size:11.5px; }
+
+  .pair { display:flex; gap:22px; flex-wrap:wrap; justify-content:center; }
+  .cell { display:flex; flex-direction:column; align-items:flex-start; gap:8px; }
+  .cap { font:600 10px/1 'Segoe UI'; letter-spacing:3px; color:#777; }
+  .cap.new { color:#ffd700; }
+  .shrink { width:638px; height:359px; overflow:hidden; box-shadow:0 18px 44px rgba(0,0,0,.7); }
+  .stage { width:1160px; height:653px; position:relative; overflow:hidden; background:#000;
+           transform:scale(.55); transform-origin:top left; isolation:isolate; }
+  .stage canvas, .stage .lay { position:absolute; inset:0; width:1160px; height:653px; }
+
+  .cool { mix-blend-mode:multiply; background:rgb(204,214,242); }
+  .bar { position:absolute; left:0; right:0; height:91px; background:#000; }
+  .bar.t { top:0 } .bar.b { bottom:0 }
+  .line { position:absolute; left:91px; bottom:193px; width:2px; height:127px; background:#ffd700; }
+  .body { position:absolute; left:115px; bottom:193px; }
+  .kick { font:400 10px/1 'Segoe UI'; letter-spacing:8px; color:#8a8a8a; margin-bottom:14px; }
+  .title { font:300 30px/1 'Segoe UI'; letter-spacing:1px; color:#fff; margin-bottom:18px; }
+  .died .title { color:#ff8a8a; }
+  .total { font:300 46px/1 'Segoe UI'; color:#ffd700; letter-spacing:1px; }
+  .shadow .title, .shadow .total { text-shadow:0 1px 3px rgba(0,0,0,.55); }
+  .quip { position:absolute; left:115px; bottom:150px; font:italic 300 15px/1.4 'Segoe UI'; color:#a8a8a8; }
+  .side { position:absolute; right:115px; bottom:193px; width:390px; }
+  .srow { display:flex; justify-content:space-between; align-items:center; padding:4px 0; height:22px; }
+  .srow em { font:400 13px/1 'Segoe UI'; font-style:normal; color:#d2d2d2; }
+  .srow b  { font:400 13px/1 'Segoe UI'; font-weight:400; }
+  .hair { height:1px; background:rgba(255,255,255,.09); margin:9px 0; }
+  .sum { display:flex; justify-content:space-between; }
+  .sum em { font:400 11px/1 'Segoe UI'; font-style:normal; color:#999; }
+  .sum b  { font:400 12px/1 'Segoe UI'; color:#d9b840; }
+  .meta { position:absolute; left:115px; bottom:40px; font:400 9px/1 'Segoe UI'; letter-spacing:5px; color:#4a4a4a; }
+  .prog { position:absolute; left:0; bottom:0; height:2px; background:rgba(255,215,0,.45); width:100%; }
+
+  /* additions: scaled to the 0.6 stage (1160 wide vs the game's 1920) */
+  .mark { position:absolute; left:109px; bottom:414px; font:400 90px/1 'Segoe UI'; letter-spacing:8px;
+          color:rgba(255,255,255,.05); white-space:nowrap; }
+  .cmp { position:absolute; bottom:201px; font:400 10px/1 'Segoe UI'; letter-spacing:2.4px; color:#d9b840; }
+  .hero { position:absolute; right:115px; bottom:414px; width:276px; height:79px; display:flex;
+          align-items:center; justify-content:flex-end; gap:13px; }
+  .hero .txt { text-align:right; }
+  .hero .lbl { font:400 7px/1 'Segoe UI'; letter-spacing:3.6px; color:#6b6b6b; margin-bottom:7px; }
+  .hero .nm { font:400 14px/1 'Segoe UI'; color:#e0e0e0; margin-bottom:7px; }
+  .hero .vl { font:400 13px/1 'Segoe UI'; }
+  .hero .ico { width:79px; height:79px; flex:none; background:linear-gradient(150deg,#2f3a44,#171d23);
+               border:1px solid rgba(255,255,255,.10); position:relative; }
+  .hero .ico::after { content:'LEDX'; position:absolute; inset:0; display:flex; align-items:center;
+                      justify-content:center; font:600 9px/1 'Segoe UI'; letter-spacing:1px; color:#5d6b78; }
+
+  .notes { max-width:1298px; margin-top:26px; border-left:3px solid #333; padding-left:16px;
+           font-size:12.5px; line-height:1.85; color:#8a8a8a; }
+  .notes h3 { color:#e8e8e8; font-size:12px; letter-spacing:2px; margin-bottom:8px; }
+  .notes li { list-style:none; }
+  .notes b { color:#d8d8d8; font-weight:600; }
+  .notes code { color:#ffd700; font-family:Consolas,monospace; font-size:11.5px; }
+</style>
+</head>
+<body>
+
+<div class="chrome" id="chrome"></div>
+<div class="hint">
+  Backdrop A/B at 0.55 scale. The plate on the right is genuinely downsampled to 1/6 and bilinear-upscaled,
+  the same thing <code>Defocus()</code> does in game, not a CSS blur. Try <b>SNOW &middot; NOON</b>, the wash-out stress case.
+</div>
+
+<div class="pair" id="pair"></div>
+<div class="notes" id="notes"></div>
+
+<script>
+const W = 1160, H = 653;
+
+/* Fake gameplay frames. High-frequency detail on purpose so the defocus is honest. */
+const SCENES = {
+  night: (c) => {
+    const g = c.createRadialGradient(W*.3, H*.25, 40, W*.3, H*.25, W*.9);
+    g.addColorStop(0,'#26343f'); g.addColorStop(.55,'#12161b'); g.addColorStop(1,'#08090b');
+    c.fillStyle = g; c.fillRect(0,0,W,H);
+    c.fillStyle = 'rgba(80,90,70,.42)';
+    c.beginPath(); c.moveTo(0,H); c.lineTo(0,H*.42); c.lineTo(W*.34,H*.55); c.lineTo(W*.28,H); c.fill();
+    c.fillStyle = 'rgba(120,140,110,.22)';
+    c.beginPath(); c.moveTo(W,H*.30); c.lineTo(W*.55,H*.48); c.lineTo(W*.72,H); c.lineTo(W,H); c.fill();
+    detail(c, 'rgba(255,255,255,.075)', 'rgba(255,214,140,.55)');
+  },
+  snow: (c) => {
+    const g = c.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,'#cfe0ee'); g.addColorStop(.45,'#e8eef3'); g.addColorStop(1,'#f6f8fa');
+    c.fillStyle = g; c.fillRect(0,0,W,H);
+    c.fillStyle = 'rgba(150,168,186,.45)';
+    c.beginPath(); c.moveTo(0,H*.62); c.lineTo(W*.30,H*.44); c.lineTo(W*.52,H*.70); c.lineTo(0,H); c.fill();
+    c.fillStyle = 'rgba(90,110,130,.35)';
+    c.beginPath(); c.moveTo(W,H*.38); c.lineTo(W*.62,H*.58); c.lineTo(W*.80,H); c.lineTo(W,H); c.fill();
+    detail(c, 'rgba(40,50,64,.14)', 'rgba(255,255,255,.9)');
+  }
+};
+
+/* Fine detail: what sharp gameplay actually puts underneath 13px text. */
+function detail(c, lineCol, dotCol){
+  c.strokeStyle = lineCol; c.lineWidth = 1;
+  for (let x = -60; x < W; x += 9) { c.beginPath(); c.moveTo(x+.5, 0); c.lineTo(x+40.5, H); c.stroke(); }
+  for (let i = 0; i < 900; i++) {
+    c.fillStyle = i % 7 === 0 ? dotCol : lineCol;
+    c.fillRect((i*137)%W, (i*311)%H, 2, 2);
+  }
+}
+
+function scenePlate(preset, downsample){
+  const full = document.createElement('canvas');
+  full.width = W; full.height = H;
+  SCENES[preset](full.getContext('2d'));
+  if (!downsample) return full;
+
+  const w = Math.round(W/6), h = Math.round(H/6);
+  const small = document.createElement('canvas');
+  small.width = w; small.height = h;
+  const sc = small.getContext('2d');
+  sc.imageSmoothingEnabled = true; sc.imageSmoothingQuality = 'high';
+  sc.drawImage(full, 0, 0, w, h);
+
+  const up = document.createElement('canvas');
+  up.width = W; up.height = H;
+  const uc = up.getContext('2d');
+  uc.imageSmoothingEnabled = true; uc.imageSmoothingQuality = 'high';
+  uc.drawImage(small, 0, 0, W, H);
+  return up;
+}
+
+/* Mirrors BuildVignetteTexture: 64px, squared radial falloff, then a layer alpha. */
+function vignette(start, span, peak, layerAlpha){
+  const s = 64, cv = document.createElement('canvas');
+  cv.width = s; cv.height = s;
+  const ctx = cv.getContext('2d'), img = ctx.createImageData(s,s);
+  for (let y=0;y<s;y++) for (let x=0;x<s;x++){
+    const dx = (x/(s-1))*2-1, dy = (y/(s-1))*2-1;
+    const d = Math.sqrt(dx*dx+dy*dy);
+    let a = Math.min(1, Math.max(0, (d-start)/span)); a *= a;
+    const i = (y*s+x)*4;
+    img.data[i]=0; img.data[i+1]=0; img.data[i+2]=0;
+    img.data[i+3] = a*peak*layerAlpha;
+  }
+  ctx.putImageData(img,0,0);
+  const out = document.createElement('canvas');
+  out.width = W; out.height = H;
+  const oc = out.getContext('2d');
+  oc.imageSmoothingEnabled = true;
+  oc.drawImage(cv, 0, 0, W, H);
+  return out;
+}
+
+/* Mirrors BuildScrimTexture: smoothstep 0.90 -> 0.10 over the bottom 70%. */
+function scrim(){
+  const h = 64, cv = document.createElement('canvas');
+  cv.width = 1; cv.height = h;
+  const ctx = cv.getContext('2d'), img = ctx.createImageData(1,h);
+  for (let y=0;y<h;y++){
+    const v = y/(h-1);                       // 0 = bottom of screen
+    const t = Math.min(1, v/0.70);
+    const sm = t*t*(3-2*t);
+    const a = 0.90 + (0.10-0.90)*sm;
+    const i = (h-1-y)*4;                     // canvas rows run top-down
+    img.data[i]=4; img.data[i+1]=6; img.data[i+2]=10; img.data[i+3]=a*255;
+  }
+  ctx.putImageData(img,0,0);
+  const out = document.createElement('canvas');
+  out.width = W; out.height = H;
+  const oc = out.getContext('2d');
+  oc.imageSmoothingEnabled = true;
+  oc.drawImage(cv, 0, 0, W, H);
+  return out;
+}
+
+const ITEMS = [["LEDX Skin Transilluminator",780000],["Graphics card",520000],["Ophthalmoscope",310000],
+               ["Intelligence folder",240000],["Tetriz portable game",150000]];
+const tint = v => v>=500000?'#ff73d9':v>=300000?'#c78cff':v>=150000?'#73bfff':v>=50000?'#e6c74d':'#b8b8b8';
+
+function content(died, extras){
+  const add = extras ? (
+      '<div class="mark">CUSTOMS</div>'
+    + '<div class="cmp" style="left:395px">BEST RAID YET</div>'
+    + '<div class="hero"><div class="txt">'
+    +   '<div class="lbl">TOP FIND</div>'
+    +   '<div class="nm">LEDX Skin Transilluminator</div>'
+    +   '<div class="vl" style="color:#ff73d9">&#8381;780,000</div>'
+    + '</div><div class="ico"></div></div>'
+  ) : '';
+  return add + '<div class="bar t"></div><div class="bar b"></div>'
+    + '<div class="line"></div>'
+    + '<div class="body">'
+    +   '<div class="kick">' + (died?'EXTRACTION FAILED!':'EXTRACTION COMPLETE') + '</div>'
+    +   '<div class="title">' + (died?'You did not make it out.':'You made it out.') + '</div>'
+    +   '<div class="total">&#8381; 2,104,000</div>'
+    + '</div>'
+    + '<div class="quip">' + (died?'That is a very expensive corpse.':'Retire? In this economy? Yes.') + '</div>'
+    + '<div class="side">'
+    +   ITEMS.map(function(it){
+          return '<div class="srow"><em>' + it[0] + '</em><b style="color:' + tint(it[1]) + '">&#8381;'
+               + it[1].toLocaleString('en-US') + '</b></div>';
+        }).join('')
+    +   '<div class="hair"></div>'
+    +   '<div class="sum"><em>47 items &middot; 3 PMC &middot; 6 Scav</em><b>+14,980 XP</b></div>'
+    + '</div>'
+    + '<div class="meta">CUSTOMS &middot; 14:22 &middot; CLICK ANYWHERE TO CLOSE</div>'
+    + '<div class="prog"></div>';
+}
+
+function buildStage(variant, preset, died){
+  const stage = document.createElement('div');
+  stage.className = 'stage' + (died?' died':'') + (variant==='new'?' shadow':'');
+
+  const plate = scenePlate(preset, variant === 'new');
+
+  if (variant === 'old'){
+    // 10% of the still-rendering scene bleeding through the frozen frame
+    const ghost = scenePlate(preset, false);
+    ghost.style.transform = 'translate(7px,4px)';
+    stage.appendChild(ghost);
+    plate.style.opacity = .9;
+    stage.appendChild(plate);
+
+    const flat = document.createElement('div');
+    flat.className = 'lay';
+    flat.style.background = 'rgba(4,6,10,.55)';
+    stage.appendChild(flat);
+    stage.appendChild(vignette(0.5, 0.65, 210, 0.55));
+  } else {
+    stage.appendChild(plate);
+    const cool = document.createElement('div');
+    cool.className = 'lay cool';
+    stage.appendChild(cool);
+    stage.appendChild(scrim());
+    stage.appendChild(vignette(0.68, 0.55, 180, 0.38));
+  }
+
+  stage.insertAdjacentHTML('beforeend', content(died, variant === 'new'));
+
+  const shrink = document.createElement('div');
+  shrink.className = 'shrink';
+  shrink.appendChild(stage);
+  return shrink;
+}
+
+let preset = 'night', died = false;
+
+function render(){
+  const pair = document.getElementById('pair');
+  pair.innerHTML = '';
+  [['old','BEFORE  &middot;  ORIGINAL'],
+   ['new','AFTER  &middot;  NEW BACKDROP + ADDITIONS']].forEach(function(row){
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    const cap = document.createElement('div');
+    cap.className = 'cap' + (row[0]==='new'?' new':'');
+    cap.innerHTML = row[1];
+    cell.appendChild(cap);
+    cell.appendChild(buildStage(row[0], preset, died));
+    pair.appendChild(cell);
+  });
+}
+
+function renderChrome(){
+  const c = document.getElementById('chrome');
+  const btn = (k,l,on) => '<button data-k="' + k + '" class="' + (on?'active':'') + '">' + l + '</button>';
+  c.innerHTML = btn('night','NIGHT &middot; CUSTOMS', preset==='night')
+              + btn('snow','SNOW &middot; NOON', preset==='snow')
+              + btn('surv','SURVIVED', !died)
+              + btn('died','DIED', died);
+  c.querySelectorAll('[data-k]').forEach(function(b){
+    b.onclick = function(){
+      const k = b.dataset.k;
+      if (k==='night'||k==='snow') preset = k; else died = (k==='died');
+      renderChrome(); render();
+    };
+  });
+}
+
+document.getElementById('notes').innerHTML =
+    '<h3>WHAT CHANGED</h3>'
+  + '<li><b>Plate</b> &mdash; <code>Color(1,1,1,0.9)</code> &rarr; <code>Color(0.80,0.84,0.95,1)</code>. '
+  + 'Opaque kills the live-scene bleed-through, visible as the offset ghost on the left; '
+  + 'the cool multiply pushes the frame back behind the gold.</li>'
+  + '<li><b>Defocus</b> &mdash; the capture is blitted through a 1/6-res RenderTexture and bilinear-upscaled. '
+  + 'One <code>Graphics.Blit</code>, no shader. It also releases the full-res screenshot, which used to leak per raid.</li>'
+  + '<li><b>Scrim</b> &mdash; the flat <code>a=0.55</code> wash becomes a vertical ramp, '
+  + '<code>0.10</code> at the top smoothstepping to <code>0.90</code> across the bottom 70%, which is wide enough to cover the loot column. '
+  + 'Uniform reads flat; a gradient reads lit.</li>'
+  + '<li><b>Vignette</b> &mdash; <code>0.55</code> &rarr; <code>0.38</code>, falloff pushed from '
+  + '<code>0.5/0.65</code> out to <code>0.68/0.55</code>. It was darkest in the corners, '
+  + 'which is exactly where the title and the loot column live.</li>'
+  + '<li><b>Underlay</b> &mdash; soft TMP shadow on the title and the total only.</li>' + '<li><b>Watermark</b> &mdash; map name at 5% white filling the empty upper band. No new data.</li>' + '<li><b>Comparison</b> &mdash; rank against <code>RaidTracker.RaidHistory</code>, placed beside the total once the count-up settles its width.</li>' + '<li><b>Top find</b> &mdash; best item with its real EFT icon, loaded via <code>ItemViewFactory.GetItemSpriteAsync</code>. The grey box here is a stand-in.</li>'
+  + '<li>Knobs if it is still off: the <code>/ 6</code> in <code>Defocus</code> (4 softer, 8 abstract) '
+  + 'and the <code>0.90f</code> bottom alpha in <code>BuildScrimTexture</code>. Raise that one first.</li>';
+
+renderChrome(); render();
+</script>
+</body>
+</html>

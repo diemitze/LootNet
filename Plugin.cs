@@ -13,7 +13,7 @@ using UnityEngine;
 
 namespace LootNet
 {
-    [BepInPlugin("com.20fpsguy.LootNet", "LootNet", "1.1.2")]
+    [BepInPlugin("com.20fpsguy.LootNet", "LootNet", "1.2.0")]
     [BepInDependency("com.20fpsguy.QuickLootServer", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -127,7 +127,7 @@ namespace LootNet
             new MenuScreenPatch().Enable();
             PatchAllKillMethods();
 
-            LogSource.LogInfo("LootNet v1.1.1 loaded!");
+            LogSource.LogInfo("LootNet v1.2.0 loaded!");
         }
     }
 }
